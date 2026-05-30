@@ -1,0 +1,33 @@
+worker_processes auto;
+pid {{WEBAPPS_ROOT}}/runtime/nginx.pid;
+error_log {{WEBAPPS_ROOT}}/runtime/logs/error.log warn;
+
+events {
+  worker_connections 1024;
+}
+
+http {
+  server_tokens off;
+  include /etc/nginx/mime.types;
+  default_type application/octet-stream;
+  access_log {{WEBAPPS_ROOT}}/runtime/logs/access.log;
+  sendfile on;
+  keepalive_timeout 30s;
+  client_max_body_size 10m;
+
+  server {
+    listen {{WEBAPPS_LISTEN_HOST}}:{{WEBAPPS_LISTEN_PORT}};
+    server_name _;
+
+    location = /healthz {
+      return 200 'ok';
+      add_header Content-Type text/plain;
+    }
+
+    location ~* (^|/)(\.env|\.git|\.svn|\.hg|package-lock\.json|yarn\.lock|pnpm-lock\.yaml)$ {
+      return 404;
+    }
+
+    include {{WEBAPPS_ENV_DIR}}/nginx/apps/*.conf;
+  }
+}

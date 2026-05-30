@@ -1,0 +1,9 @@
+repos/
+releases/
+current/
+runtime/
+*.log
+.env
+*.env
+!config/*.env.example
+!config/apps.d/*.env.example
