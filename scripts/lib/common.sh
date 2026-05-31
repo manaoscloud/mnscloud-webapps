@@ -87,6 +87,59 @@ install_nginx_package() {
   command -v nginx >/dev/null 2>&1 || die "nginx installation failed"
 }
 
+install_flutter_dependencies() {
+  detect_os
+  log "installing Flutter build dependencies"
+  if [[ "$OS_FAMILY" == "debian" ]]; then
+    apt-get update -y
+    apt-get install -y --no-install-recommends \
+      ca-certificates clang cmake curl git libgtk-3-dev liblzma-dev ninja-build \
+      pkg-config unzip xz-utils zip
+  else
+    dnf install -y \
+      ca-certificates clang cmake curl git gtk3-devel libstdc++-devel ninja-build \
+      pkgconf-pkg-config unzip xz zip
+  fi
+}
+
+install_or_update_flutter() {
+  local flutter_dir="${WEBAPPS_FLUTTER_DIR:-/opt/flutter}"
+  local flutter_channel="${WEBAPPS_FLUTTER_CHANNEL:-stable}"
+
+  install_flutter_dependencies
+
+  if [[ -d "${flutter_dir}/.git" ]]; then
+    log "updating Flutter SDK in ${flutter_dir}"
+    git -C "$flutter_dir" fetch origin "$flutter_channel"
+    git -C "$flutter_dir" checkout "$flutter_channel"
+    git -C "$flutter_dir" pull --ff-only origin "$flutter_channel"
+  else
+    log "installing Flutter SDK in ${flutter_dir}"
+    install -d -m 0755 "$(dirname "$flutter_dir")"
+    git clone --depth 1 --branch "$flutter_channel" https://github.com/flutter/flutter.git "$flutter_dir"
+  fi
+
+  ln -sfn "${flutter_dir}/bin/flutter" /usr/local/bin/flutter
+  ln -sfn "${flutter_dir}/bin/dart" /usr/local/bin/dart
+
+  "${flutter_dir}/bin/flutter" config --no-analytics
+  "${flutter_dir}/bin/flutter" precache --web
+  "${flutter_dir}/bin/flutter" --version
+}
+
+ensure_flutter() {
+  if command -v flutter >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if [[ "${WEBAPPS_INSTALL_FLUTTER:-true}" != "true" ]]; then
+    die "flutter is required. Install Flutter or set WEBAPPS_INSTALL_FLUTTER=true."
+  fi
+
+  install_or_update_flutter
+  command -v flutter >/dev/null 2>&1 || die "Flutter installation failed"
+}
+
 disable_default_nginx_service() {
   if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files nginx.service >/dev/null 2>&1; then
     systemctl disable --now nginx.service >/dev/null 2>&1 || true
@@ -137,6 +190,9 @@ load_runtime_env() {
   WEBAPPS_LISTEN_PORT="${WEBAPPS_LISTEN_PORT:-8080}"
   WEBAPPS_USER="${WEBAPPS_USER:-mnscloud-webapps}"
   WEBAPPS_GROUP="${WEBAPPS_GROUP:-mnscloud-webapps}"
+  WEBAPPS_INSTALL_FLUTTER="${WEBAPPS_INSTALL_FLUTTER:-true}"
+  WEBAPPS_FLUTTER_DIR="${WEBAPPS_FLUTTER_DIR:-/opt/flutter}"
+  WEBAPPS_FLUTTER_CHANNEL="${WEBAPPS_FLUTTER_CHANNEL:-stable}"
   WEBAPPS_ENABLED_APPS="${WEBAPPS_ENABLED_APPS:-}"
 }
 

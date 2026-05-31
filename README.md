@@ -51,8 +51,9 @@ sudo ./scripts/install-webapps.sh --env /etc/mnscloud/webapps/webapps.env
 ```
 
 The installer configures the official stable `nginx.org` package repository when Nginx is missing,
-installs `nginx` from that repository, disables the default `nginx.service`, and starts the isolated
-`mnscloud-webapps.service` using its own runtime config.
+installs `nginx` from that repository, installs the Flutter/Dart SDK and web build dependencies when
+needed, disables the default `nginx.service`, and starts the isolated `mnscloud-webapps.service`
+using its own runtime config.
 
 Review app env files before building:
 

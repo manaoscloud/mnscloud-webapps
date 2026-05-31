@@ -7,6 +7,16 @@ from that repository when Nginx is missing. Supported operating systems follow t
 contract: Debian 12/13 and RHEL/Rocky/AlmaLinux 9/10. The default `nginx.service` is stopped and
 disabled so only `mnscloud-webapps.service` owns the private runtime listener.
 
+Flutter/Dart is installed automatically when missing, controlled by:
+
+```env
+WEBAPPS_INSTALL_FLUTTER=true
+WEBAPPS_FLUTTER_DIR=/opt/flutter
+WEBAPPS_FLUTTER_CHANNEL=stable
+```
+
+Set `WEBAPPS_INSTALL_FLUTTER=false` only when Flutter is already installed and available in `PATH`.
+
 Per-app public-safe configuration lives in:
 
 ```text

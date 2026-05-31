@@ -30,8 +30,11 @@ load_runtime_env
 load_app_env "$APP"
 [[ -n "$REF_OVERRIDE" ]] && APP_REF="$REF_OVERRIDE"
 
+if ! command -v git >/dev/null 2>&1; then
+  install_flutter_dependencies
+fi
+ensure_flutter
 command -v git >/dev/null 2>&1 || die "git is required"
-command -v flutter >/dev/null 2>&1 || die "flutter is required"
 
 install -d -m 0755 "$(dirname "$APP_REPO_DIR")" "$APP_RELEASES_DIR"
 if [[ ! -d "${APP_REPO_DIR}/.git" ]]; then
