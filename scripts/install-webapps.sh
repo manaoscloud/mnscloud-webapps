@@ -27,8 +27,8 @@ fi
 load_runtime_env
 install_nginx_package
 disable_default_nginx_service
-ensure_flutter
 ensure_service_user
+ensure_flutter
 NGINX_BIN="$(command -v nginx || true)"
 [[ -n "$NGINX_BIN" ]] || die "nginx is required"
 

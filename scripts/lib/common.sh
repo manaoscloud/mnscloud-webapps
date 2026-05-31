@@ -80,6 +80,8 @@ install_or_update_flutter() {
   export MNSCLOUD_FLUTTER_DIR="${WEBAPPS_FLUTTER_DIR:-/opt/flutter}"
   export MNSCLOUD_FLUTTER_CHANNEL="${WEBAPPS_FLUTTER_CHANNEL:-stable}"
   export MNSCLOUD_FLUTTER_BUILD_PROFILE="${WEBAPPS_FLUTTER_BUILD_PROFILE:-web}"
+  export MNSCLOUD_FLUTTER_RUN_USER="${WEBAPPS_FLUTTER_RUN_USER:-$WEBAPPS_USER}"
+  export MNSCLOUD_FLUTTER_HOME="${WEBAPPS_FLUTTER_HOME:-/var/lib/mnscloud-webapps/flutter}"
   export MNSCLOUD_FLUTTER_PRECACHE_WEB=true
   mrtk_install_or_update_flutter
 }
@@ -97,6 +99,8 @@ ensure_flutter() {
   export MNSCLOUD_FLUTTER_DIR="${WEBAPPS_FLUTTER_DIR:-/opt/flutter}"
   export MNSCLOUD_FLUTTER_CHANNEL="${WEBAPPS_FLUTTER_CHANNEL:-stable}"
   export MNSCLOUD_FLUTTER_BUILD_PROFILE="${WEBAPPS_FLUTTER_BUILD_PROFILE:-web}"
+  export MNSCLOUD_FLUTTER_RUN_USER="${WEBAPPS_FLUTTER_RUN_USER:-$WEBAPPS_USER}"
+  export MNSCLOUD_FLUTTER_HOME="${WEBAPPS_FLUTTER_HOME:-/var/lib/mnscloud-webapps/flutter}"
   export MNSCLOUD_FLUTTER_PRECACHE_WEB=true
   mrtk_ensure_flutter
   command -v flutter >/dev/null 2>&1 || die "Flutter installation failed"
@@ -159,6 +163,8 @@ load_runtime_env() {
   WEBAPPS_FLUTTER_DIR="${WEBAPPS_FLUTTER_DIR:-/opt/flutter}"
   WEBAPPS_FLUTTER_CHANNEL="${WEBAPPS_FLUTTER_CHANNEL:-stable}"
   WEBAPPS_FLUTTER_BUILD_PROFILE="${WEBAPPS_FLUTTER_BUILD_PROFILE:-web}"
+  WEBAPPS_FLUTTER_RUN_USER="${WEBAPPS_FLUTTER_RUN_USER:-$WEBAPPS_USER}"
+  WEBAPPS_FLUTTER_HOME="${WEBAPPS_FLUTTER_HOME:-/var/lib/mnscloud-webapps/flutter}"
   WEBAPPS_ENABLED_APPS="${WEBAPPS_ENABLED_APPS:-}"
 }
 
@@ -232,6 +238,16 @@ ensure_service_user() {
     useradd --system --home "$WEBAPPS_ROOT" --shell /usr/sbin/nologin \
       --gid "$WEBAPPS_GROUP" "$WEBAPPS_USER"
   fi
+}
+
+run_as_webapps_user() {
+  local home="${WEBAPPS_FLUTTER_HOME:-/var/lib/mnscloud-webapps/flutter}"
+  install -d -m 0750 -o "$WEBAPPS_USER" -g "$WEBAPPS_GROUP" "$home"
+  runuser -u "$WEBAPPS_USER" -- env \
+    HOME="$home" \
+    PUB_CACHE="${home}/.pub-cache" \
+    PATH="${WEBAPPS_FLUTTER_DIR}/bin:${PATH}" \
+    "$@"
 }
 
 enabled_apps() {

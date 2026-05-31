@@ -27,6 +27,7 @@ done
 [[ -n "$APP" ]] || die "--app is required"
 require_root
 load_runtime_env
+ensure_service_user
 load_app_env "$APP"
 [[ -n "$REF_OVERRIDE" ]] && APP_REF="$REF_OVERRIDE"
 
@@ -41,21 +42,22 @@ if [[ ! -d "${APP_REPO_DIR}/.git" ]]; then
   log "cloning ${APP_NAME} from ${APP_REPO_URL}"
   git clone "$APP_REPO_URL" "$APP_REPO_DIR"
 fi
+chown -R "$WEBAPPS_USER:$WEBAPPS_GROUP" "$APP_REPO_DIR" "$APP_RELEASES_DIR"
 
 cd "$APP_REPO_DIR"
-git fetch --all --tags --prune
-git checkout "$APP_REF"
-git pull --ff-only origin "$APP_REF" 2>/dev/null || true
+run_as_webapps_user git fetch --all --tags --prune
+run_as_webapps_user git checkout "$APP_REF"
+run_as_webapps_user git pull --ff-only origin "$APP_REF" 2>/dev/null || true
 
 log "installing Flutter dependencies for ${APP_NAME}"
-flutter pub get
+run_as_webapps_user flutter pub get
 
 if [[ -n "${APP_BUILD_COMMAND:-}" ]]; then
   log "building ${APP_NAME}: ${APP_BUILD_COMMAND}"
-  bash -lc "$APP_BUILD_COMMAND"
+  run_as_webapps_user bash -lc "$APP_BUILD_COMMAND"
 else
   log "building ${APP_NAME} with default Flutter web command"
-  flutter build web --release --base-href "$APP_BASE_PATH"
+  run_as_webapps_user flutter build web --release --base-href "$APP_BASE_PATH"
 fi
 
 [[ -d build/web ]] || die "build/web was not produced for ${APP_NAME}"
@@ -65,6 +67,7 @@ release_dir="${APP_RELEASES_DIR}/${release_id}"
 install -d -m 0755 "$release_dir"
 cp -a build/web/. "$release_dir/"
 ln -sfn "$release_dir" "$APP_CURRENT_LINK"
+chown -R "$WEBAPPS_USER:$WEBAPPS_GROUP" "$release_dir"
 
 render_app_nginx "$APP_NAME"
 render_runtime_nginx
