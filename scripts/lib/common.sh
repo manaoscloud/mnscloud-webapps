@@ -40,7 +40,8 @@ ensure_git() {
 ensure_runtime_kit() {
   WEBAPPS_RUNTIME_KIT_DIR="${WEBAPPS_RUNTIME_KIT_DIR:-/opt/mnscloud/runtime-kit}"
   WEBAPPS_RUNTIME_KIT_REPO_URL="${WEBAPPS_RUNTIME_KIT_REPO_URL:-https://github.com/manaoscloud/mnscloud-runtime-kit.git}"
-  WEBAPPS_RUNTIME_KIT_REF="${WEBAPPS_RUNTIME_KIT_REF:-v0.1.6}"
+  WEBAPPS_RUNTIME_KIT_REF="${WEBAPPS_RUNTIME_KIT_REF:-}"
+  WEBAPPS_RUNTIME_KIT_CHANNEL="${WEBAPPS_RUNTIME_KIT_CHANNEL:-stable}"
 
   ensure_git
 
@@ -53,9 +54,36 @@ ensure_runtime_kit() {
     git clone "$WEBAPPS_RUNTIME_KIT_REPO_URL" "$WEBAPPS_RUNTIME_KIT_DIR"
   fi
 
+  if [[ -z "$WEBAPPS_RUNTIME_KIT_REF" ]]; then
+    WEBAPPS_RUNTIME_KIT_REF="$(resolve_runtime_kit_ref "$WEBAPPS_RUNTIME_KIT_DIR" "$WEBAPPS_RUNTIME_KIT_CHANNEL")"
+    log "resolved runtime kit ${WEBAPPS_RUNTIME_KIT_CHANNEL} channel to ${WEBAPPS_RUNTIME_KIT_REF}"
+  fi
+
   git -C "$WEBAPPS_RUNTIME_KIT_DIR" -c advice.detachedHead=false checkout "$WEBAPPS_RUNTIME_KIT_REF"
   git -C "$WEBAPPS_RUNTIME_KIT_DIR" pull --ff-only origin "$WEBAPPS_RUNTIME_KIT_REF" 2>/dev/null || true
   [[ -r "${WEBAPPS_RUNTIME_KIT_DIR}/lib/packages.sh" ]] || die "runtime kit packages library not found"
+}
+
+resolve_runtime_kit_ref() {
+  local kit_dir="$1"
+  local channel="$2"
+  local manifest ref
+
+  manifest="$(git -C "$kit_dir" show "origin/main:releases/manifest.json" 2>/dev/null)" ||
+    die "cannot read runtime kit release manifest from origin/main"
+  ref="$(printf '%s\n' "$manifest" | awk -v channel="$channel" '
+    $0 ~ "\"" channel "\"" { in_channel = 1; next }
+    in_channel && /"ref"[[:space:]]*:/ {
+      gsub(/.*"ref"[[:space:]]*:[[:space:]]*"/, "")
+      gsub(/".*/, "")
+      print
+      exit
+    }
+    in_channel && /^[[:space:]]*}/ { in_channel = 0 }
+  ')"
+  [[ "$ref" =~ ^v[0-9]+[.][0-9]+[.][0-9]+([-+][0-9A-Za-z.-]+)?$ ]] ||
+    die "invalid runtime kit ref for channel ${channel}: ${ref:-empty}"
+  printf '%s\n' "$ref"
 }
 
 load_runtime_kit() {
@@ -158,7 +186,8 @@ load_runtime_env() {
   WEBAPPS_GROUP="${WEBAPPS_GROUP:-mnscloud-webapps}"
   WEBAPPS_RUNTIME_KIT_DIR="${WEBAPPS_RUNTIME_KIT_DIR:-/opt/mnscloud/runtime-kit}"
   WEBAPPS_RUNTIME_KIT_REPO_URL="${WEBAPPS_RUNTIME_KIT_REPO_URL:-https://github.com/manaoscloud/mnscloud-runtime-kit.git}"
-  WEBAPPS_RUNTIME_KIT_REF="${WEBAPPS_RUNTIME_KIT_REF:-v0.1.6}"
+  WEBAPPS_RUNTIME_KIT_CHANNEL="${WEBAPPS_RUNTIME_KIT_CHANNEL:-stable}"
+  WEBAPPS_RUNTIME_KIT_REF="${WEBAPPS_RUNTIME_KIT_REF:-}"
   WEBAPPS_INSTALL_FLUTTER="${WEBAPPS_INSTALL_FLUTTER:-true}"
   WEBAPPS_FLUTTER_DIR="${WEBAPPS_FLUTTER_DIR:-/opt/flutter}"
   WEBAPPS_FLUTTER_CHANNEL="${WEBAPPS_FLUTTER_CHANNEL:-stable}"
