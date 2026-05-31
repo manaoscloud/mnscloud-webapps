@@ -14,11 +14,58 @@ detect_os() {
   source /etc/os-release
   OS_ID="${ID:-}"
   OS_VERSION_ID="${VERSION_ID:-}"
+  OS_VERSION_CODENAME="${VERSION_CODENAME:-}"
   case "${OS_ID}:${OS_VERSION_ID}" in
-    debian:*|ubuntu:*) OS_FAMILY="debian" ;;
+    debian:12|debian:13) OS_FAMILY="debian" ;;
     rhel:9*|rhel:10*|rocky:9*|rocky:10*|almalinux:9*|almalinux:10*) OS_FAMILY="rhel" ;;
-    *) die "unsupported OS: ${PRETTY_NAME:-$OS_ID $OS_VERSION_ID}. Supported: Debian/Ubuntu and RHEL/Rocky/AlmaLinux 9/10" ;;
+    *) die "unsupported OS: ${PRETTY_NAME:-$OS_ID $OS_VERSION_ID}. Supported: Debian 12/13 and RHEL/Rocky/AlmaLinux 9/10" ;;
   esac
+}
+
+install_nginx_org_repository() {
+  if [[ "$OS_FAMILY" == "debian" ]]; then
+    apt-get update -y
+    apt-get install -y curl gnupg2 ca-certificates lsb-release debian-archive-keyring
+
+    curl -fsSL https://nginx.org/keys/nginx_signing.key \
+      | gpg --dearmor \
+      | tee /usr/share/keyrings/nginx-archive-keyring.gpg >/dev/null
+
+    local codename="${OS_VERSION_CODENAME:-}"
+    if [[ -z "$codename" ]]; then
+      codename="$(lsb_release -cs)"
+    fi
+
+    cat > /etc/apt/sources.list.d/nginx.list <<EOF
+deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] https://nginx.org/packages/debian ${codename} nginx
+EOF
+
+    cat > /etc/apt/preferences.d/99nginx <<'EOF'
+Package: *
+Pin: origin nginx.org
+Pin: release o=nginx
+Pin-Priority: 900
+EOF
+  else
+    dnf install -y yum-utils ca-certificates curl
+    cat > /etc/yum.repos.d/nginx.repo <<'EOF'
+[nginx-stable]
+name=nginx stable repo
+baseurl=https://nginx.org/packages/centos/$releasever/$basearch/
+gpgcheck=1
+enabled=1
+gpgkey=https://nginx.org/keys/nginx_signing.key
+module_hotfixes=true
+
+[nginx-mainline]
+name=nginx mainline repo
+baseurl=https://nginx.org/packages/mainline/centos/$releasever/$basearch/
+gpgcheck=1
+enabled=0
+gpgkey=https://nginx.org/keys/nginx_signing.key
+module_hotfixes=true
+EOF
+  fi
 }
 
 install_nginx_package() {
@@ -27,7 +74,9 @@ install_nginx_package() {
   fi
 
   detect_os
-  log "nginx not found; installing package"
+  log "nginx not found; configuring official nginx.org repository"
+  install_nginx_org_repository
+  log "installing nginx from official nginx.org repository"
   if [[ "$OS_FAMILY" == "debian" ]]; then
     apt-get update -y
     apt-get install -y nginx

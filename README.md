@@ -35,6 +35,13 @@ Authorization, employee scope, PABX queue ownership, and secret resolution stay 
 
 ## Install
 
+Supported bare-metal operating systems:
+
+- Debian 12/13
+- RHEL 9/10
+- Rocky Linux 9/10
+- AlmaLinux 9/10
+
 ```bash
 sudo install -d -m 0755 /opt/mnscloud
 cd /opt/mnscloud
@@ -43,8 +50,9 @@ cd /opt/mnscloud/mnscloud-webapps
 sudo ./scripts/install-webapps.sh --env /etc/mnscloud/webapps/webapps.env
 ```
 
-The installer installs the system `nginx` package when it is missing, disables the default
-`nginx.service`, and starts the isolated `mnscloud-webapps.service` using its own runtime config.
+The installer configures the official stable `nginx.org` package repository when Nginx is missing,
+installs `nginx` from that repository, disables the default `nginx.service`, and starts the isolated
+`mnscloud-webapps.service` using its own runtime config.
 
 Review app env files before building:
 
