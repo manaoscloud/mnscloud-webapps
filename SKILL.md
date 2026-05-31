@@ -9,6 +9,7 @@ small MNSCloud clients.
 - Keep secrets and private infrastructure details out of app env files and build artifacts.
 - Use `/etc/mnscloud/webapps/apps.d/<app>.env` for public-safe per-app settings.
 - Keep public exposure in `mnscloud-nginx`; this module listens on a private host/port.
+- Use `mnscloud-runtime-kit` for shared runtime installation logic such as Nginx and Flutter.
 - Run lifecycle validation after installer, runtime, or config changes.
 
 ## Validation

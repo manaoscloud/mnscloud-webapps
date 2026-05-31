@@ -17,6 +17,7 @@ edge proxies under paths such as `/phoneweb/` and `/pulse/`.
 - Internal service: `mnscloud-webapps.service`
 - Internal health endpoint: `/healthz`
 - Default listen address: `127.0.0.1:8080`
+- Shared runtime kit: `/opt/mnscloud/runtime-kit`
 
 ## Security Boundary
 
@@ -50,10 +51,19 @@ cd /opt/mnscloud/mnscloud-webapps
 sudo ./scripts/install-webapps.sh --env /etc/mnscloud/webapps/webapps.env
 ```
 
-The installer configures the official stable `nginx.org` package repository when Nginx is missing,
-installs `nginx` from that repository, installs the Flutter/Dart SDK and web build dependencies when
-needed, disables the default `nginx.service`, and starts the isolated `mnscloud-webapps.service`
-using its own runtime config.
+The installer uses `mnscloud-runtime-kit` to configure the official stable `nginx.org` package
+repository when Nginx is missing, install `nginx` from that repository, and install the Flutter/Dart
+SDK from the official Flutter GitHub repository with the OS build dependencies needed for web
+builds. Then it disables the default `nginx.service` and starts the isolated
+`mnscloud-webapps.service` using its own runtime config.
+
+For production, pin the runtime kit by ref in `/etc/mnscloud/webapps/webapps.env`:
+
+```env
+WEBAPPS_RUNTIME_KIT_REF=v0.1.0
+```
+
+Use `main` only for development environments.
 
 Review app env files before building:
 

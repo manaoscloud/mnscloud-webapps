@@ -22,109 +22,65 @@ detect_os() {
   esac
 }
 
-install_nginx_org_repository() {
-  if [[ "$OS_FAMILY" == "debian" ]]; then
-    apt-get update -y
-    apt-get install -y curl gnupg2 ca-certificates lsb-release debian-archive-keyring
-
-    curl -fsSL https://nginx.org/keys/nginx_signing.key \
-      | gpg --dearmor \
-      | tee /usr/share/keyrings/nginx-archive-keyring.gpg >/dev/null
-
-    local codename="${OS_VERSION_CODENAME:-}"
-    if [[ -z "$codename" ]]; then
-      codename="$(lsb_release -cs)"
-    fi
-
-    cat > /etc/apt/sources.list.d/nginx.list <<EOF
-deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] https://nginx.org/packages/debian ${codename} nginx
-EOF
-
-    cat > /etc/apt/preferences.d/99nginx <<'EOF'
-Package: *
-Pin: origin nginx.org
-Pin: release o=nginx
-Pin-Priority: 900
-EOF
-  else
-    dnf install -y yum-utils ca-certificates curl
-    cat > /etc/yum.repos.d/nginx.repo <<'EOF'
-[nginx-stable]
-name=nginx stable repo
-baseurl=https://nginx.org/packages/centos/$releasever/$basearch/
-gpgcheck=1
-enabled=1
-gpgkey=https://nginx.org/keys/nginx_signing.key
-module_hotfixes=true
-
-[nginx-mainline]
-name=nginx mainline repo
-baseurl=https://nginx.org/packages/mainline/centos/$releasever/$basearch/
-gpgcheck=1
-enabled=0
-gpgkey=https://nginx.org/keys/nginx_signing.key
-module_hotfixes=true
-EOF
-  fi
-}
-
-install_nginx_package() {
-  if command -v nginx >/dev/null 2>&1; then
+ensure_git() {
+  if command -v git >/dev/null 2>&1; then
     return 0
   fi
 
   detect_os
-  log "nginx not found; configuring official nginx.org repository"
-  install_nginx_org_repository
-  log "installing nginx from official nginx.org repository"
+  log "git not found; installing git"
   if [[ "$OS_FAMILY" == "debian" ]]; then
     apt-get update -y
-    apt-get install -y nginx
+    apt-get install -y git ca-certificates
   else
-    dnf install -y nginx
+    dnf install -y git ca-certificates
+  fi
+}
+
+ensure_runtime_kit() {
+  WEBAPPS_RUNTIME_KIT_DIR="${WEBAPPS_RUNTIME_KIT_DIR:-/opt/mnscloud/runtime-kit}"
+  WEBAPPS_RUNTIME_KIT_REPO_URL="${WEBAPPS_RUNTIME_KIT_REPO_URL:-https://github.com/manaoscloud/mnscloud-runtime-kit.git}"
+  WEBAPPS_RUNTIME_KIT_REF="${WEBAPPS_RUNTIME_KIT_REF:-main}"
+
+  ensure_git
+
+  if [[ -d "${WEBAPPS_RUNTIME_KIT_DIR}/.git" ]]; then
+    log "updating runtime kit in ${WEBAPPS_RUNTIME_KIT_DIR}"
+    git -C "$WEBAPPS_RUNTIME_KIT_DIR" fetch --all --tags --prune
+  else
+    log "installing runtime kit in ${WEBAPPS_RUNTIME_KIT_DIR}"
+    install -d -m 0755 "$(dirname "$WEBAPPS_RUNTIME_KIT_DIR")"
+    git clone "$WEBAPPS_RUNTIME_KIT_REPO_URL" "$WEBAPPS_RUNTIME_KIT_DIR"
   fi
 
-  command -v nginx >/dev/null 2>&1 || die "nginx installation failed"
+  git -C "$WEBAPPS_RUNTIME_KIT_DIR" checkout "$WEBAPPS_RUNTIME_KIT_REF"
+  git -C "$WEBAPPS_RUNTIME_KIT_DIR" pull --ff-only origin "$WEBAPPS_RUNTIME_KIT_REF" 2>/dev/null || true
+  [[ -r "${WEBAPPS_RUNTIME_KIT_DIR}/lib/packages.sh" ]] || die "runtime kit packages library not found"
+}
+
+load_runtime_kit() {
+  ensure_runtime_kit
+  export MNSCLOUD_RUNTIME_KIT_LOG_PREFIX="mnscloud-webapps/runtime-kit"
+  # shellcheck disable=SC1091
+  source "${WEBAPPS_RUNTIME_KIT_DIR}/lib/packages.sh"
+}
+
+install_nginx_package() {
+  load_runtime_kit
+  mrtk_install_nginx_package
 }
 
 install_flutter_dependencies() {
-  detect_os
-  log "installing Flutter build dependencies"
-  if [[ "$OS_FAMILY" == "debian" ]]; then
-    apt-get update -y
-    apt-get install -y --no-install-recommends \
-      ca-certificates clang cmake curl git libgtk-3-dev liblzma-dev ninja-build \
-      pkg-config unzip xz-utils zip
-  else
-    dnf install -y \
-      ca-certificates clang cmake curl git gtk3-devel libstdc++-devel ninja-build \
-      pkgconf-pkg-config unzip xz zip
-  fi
+  load_runtime_kit
+  mrtk_install_flutter_dependencies
 }
 
 install_or_update_flutter() {
-  local flutter_dir="${WEBAPPS_FLUTTER_DIR:-/opt/flutter}"
-  local flutter_channel="${WEBAPPS_FLUTTER_CHANNEL:-stable}"
-
-  install_flutter_dependencies
-
-  if [[ -d "${flutter_dir}/.git" ]]; then
-    log "updating Flutter SDK in ${flutter_dir}"
-    git -C "$flutter_dir" fetch origin "$flutter_channel"
-    git -C "$flutter_dir" checkout "$flutter_channel"
-    git -C "$flutter_dir" pull --ff-only origin "$flutter_channel"
-  else
-    log "installing Flutter SDK in ${flutter_dir}"
-    install -d -m 0755 "$(dirname "$flutter_dir")"
-    git clone --depth 1 --branch "$flutter_channel" https://github.com/flutter/flutter.git "$flutter_dir"
-  fi
-
-  ln -sfn "${flutter_dir}/bin/flutter" /usr/local/bin/flutter
-  ln -sfn "${flutter_dir}/bin/dart" /usr/local/bin/dart
-
-  "${flutter_dir}/bin/flutter" config --no-analytics
-  "${flutter_dir}/bin/flutter" precache --web
-  "${flutter_dir}/bin/flutter" --version
+  load_runtime_kit
+  export MNSCLOUD_FLUTTER_DIR="${WEBAPPS_FLUTTER_DIR:-/opt/flutter}"
+  export MNSCLOUD_FLUTTER_CHANNEL="${WEBAPPS_FLUTTER_CHANNEL:-stable}"
+  export MNSCLOUD_FLUTTER_PRECACHE_WEB=true
+  mrtk_install_or_update_flutter
 }
 
 ensure_flutter() {
@@ -136,7 +92,11 @@ ensure_flutter() {
     die "flutter is required. Install Flutter or set WEBAPPS_INSTALL_FLUTTER=true."
   fi
 
-  install_or_update_flutter
+  load_runtime_kit
+  export MNSCLOUD_FLUTTER_DIR="${WEBAPPS_FLUTTER_DIR:-/opt/flutter}"
+  export MNSCLOUD_FLUTTER_CHANNEL="${WEBAPPS_FLUTTER_CHANNEL:-stable}"
+  export MNSCLOUD_FLUTTER_PRECACHE_WEB=true
+  mrtk_ensure_flutter
   command -v flutter >/dev/null 2>&1 || die "Flutter installation failed"
 }
 
@@ -190,6 +150,9 @@ load_runtime_env() {
   WEBAPPS_LISTEN_PORT="${WEBAPPS_LISTEN_PORT:-8080}"
   WEBAPPS_USER="${WEBAPPS_USER:-mnscloud-webapps}"
   WEBAPPS_GROUP="${WEBAPPS_GROUP:-mnscloud-webapps}"
+  WEBAPPS_RUNTIME_KIT_DIR="${WEBAPPS_RUNTIME_KIT_DIR:-/opt/mnscloud/runtime-kit}"
+  WEBAPPS_RUNTIME_KIT_REPO_URL="${WEBAPPS_RUNTIME_KIT_REPO_URL:-https://github.com/manaoscloud/mnscloud-runtime-kit.git}"
+  WEBAPPS_RUNTIME_KIT_REF="${WEBAPPS_RUNTIME_KIT_REF:-main}"
   WEBAPPS_INSTALL_FLUTTER="${WEBAPPS_INSTALL_FLUTTER:-true}"
   WEBAPPS_FLUTTER_DIR="${WEBAPPS_FLUTTER_DIR:-/opt/flutter}"
   WEBAPPS_FLUTTER_CHANNEL="${WEBAPPS_FLUTTER_CHANNEL:-stable}"
