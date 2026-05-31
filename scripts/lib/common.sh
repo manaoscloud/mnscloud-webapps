@@ -8,6 +8,42 @@ log() { printf '[mnscloud-webapps] %s\n' "$*"; }
 die() { printf '[mnscloud-webapps] ERROR: %s\n' "$*" >&2; exit 1; }
 require_root() { [[ "${EUID}" -eq 0 ]] || die "this command must run as root"; }
 
+detect_os() {
+  [[ -r /etc/os-release ]] || die "/etc/os-release not found"
+  # shellcheck disable=SC1091
+  source /etc/os-release
+  OS_ID="${ID:-}"
+  OS_VERSION_ID="${VERSION_ID:-}"
+  case "${OS_ID}:${OS_VERSION_ID}" in
+    debian:*|ubuntu:*) OS_FAMILY="debian" ;;
+    rhel:9*|rhel:10*|rocky:9*|rocky:10*|almalinux:9*|almalinux:10*) OS_FAMILY="rhel" ;;
+    *) die "unsupported OS: ${PRETTY_NAME:-$OS_ID $OS_VERSION_ID}. Supported: Debian/Ubuntu and RHEL/Rocky/AlmaLinux 9/10" ;;
+  esac
+}
+
+install_nginx_package() {
+  if command -v nginx >/dev/null 2>&1; then
+    return 0
+  fi
+
+  detect_os
+  log "nginx not found; installing package"
+  if [[ "$OS_FAMILY" == "debian" ]]; then
+    apt-get update -y
+    apt-get install -y nginx
+  else
+    dnf install -y nginx
+  fi
+
+  command -v nginx >/dev/null 2>&1 || die "nginx installation failed"
+}
+
+disable_default_nginx_service() {
+  if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files nginx.service >/dev/null 2>&1; then
+    systemctl disable --now nginx.service >/dev/null 2>&1 || true
+  fi
+}
+
 load_env_file() {
   local env_file="${1:-$DEFAULT_ENV_FILE}"
   local line key value

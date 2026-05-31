@@ -25,6 +25,8 @@ if [[ ! -f "$ENV_FILE" ]]; then
 fi
 
 load_runtime_env
+install_nginx_package
+disable_default_nginx_service
 ensure_service_user
 NGINX_BIN="$(command -v nginx || true)"
 [[ -n "$NGINX_BIN" ]] || die "nginx is required"

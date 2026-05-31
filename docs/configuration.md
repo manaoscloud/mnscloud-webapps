@@ -2,6 +2,10 @@
 
 Runtime configuration lives in `/etc/mnscloud/webapps/webapps.env`.
 
+The installer uses the host package manager to install `nginx` when missing. The default
+`nginx.service` is stopped and disabled so only `mnscloud-webapps.service` owns the private runtime
+listener.
+
 Per-app public-safe configuration lives in:
 
 ```text

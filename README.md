@@ -43,6 +43,9 @@ cd /opt/mnscloud/mnscloud-webapps
 sudo ./scripts/install-webapps.sh --env /etc/mnscloud/webapps/webapps.env
 ```
 
+The installer installs the system `nginx` package when it is missing, disables the default
+`nginx.service`, and starts the isolated `mnscloud-webapps.service` using its own runtime config.
+
 Review app env files before building:
 
 ```bash
