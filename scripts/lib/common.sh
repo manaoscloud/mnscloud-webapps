@@ -40,7 +40,7 @@ ensure_git() {
 ensure_runtime_kit() {
   WEBAPPS_RUNTIME_KIT_DIR="${WEBAPPS_RUNTIME_KIT_DIR:-/opt/mnscloud/runtime-kit}"
   WEBAPPS_RUNTIME_KIT_REPO_URL="${WEBAPPS_RUNTIME_KIT_REPO_URL:-https://github.com/manaoscloud/mnscloud-runtime-kit.git}"
-  WEBAPPS_RUNTIME_KIT_REF="${WEBAPPS_RUNTIME_KIT_REF:-main}"
+  WEBAPPS_RUNTIME_KIT_REF="${WEBAPPS_RUNTIME_KIT_REF:-v0.1.6}"
 
   ensure_git
 
@@ -158,7 +158,7 @@ load_runtime_env() {
   WEBAPPS_GROUP="${WEBAPPS_GROUP:-mnscloud-webapps}"
   WEBAPPS_RUNTIME_KIT_DIR="${WEBAPPS_RUNTIME_KIT_DIR:-/opt/mnscloud/runtime-kit}"
   WEBAPPS_RUNTIME_KIT_REPO_URL="${WEBAPPS_RUNTIME_KIT_REPO_URL:-https://github.com/manaoscloud/mnscloud-runtime-kit.git}"
-  WEBAPPS_RUNTIME_KIT_REF="${WEBAPPS_RUNTIME_KIT_REF:-main}"
+  WEBAPPS_RUNTIME_KIT_REF="${WEBAPPS_RUNTIME_KIT_REF:-v0.1.6}"
   WEBAPPS_INSTALL_FLUTTER="${WEBAPPS_INSTALL_FLUTTER:-true}"
   WEBAPPS_FLUTTER_DIR="${WEBAPPS_FLUTTER_DIR:-/opt/flutter}"
   WEBAPPS_FLUTTER_CHANNEL="${WEBAPPS_FLUTTER_CHANNEL:-stable}"

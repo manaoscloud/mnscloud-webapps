@@ -60,7 +60,7 @@ builds. Then it disables the default `nginx.service` and starts the isolated
 For production, pin the runtime kit by ref in `/etc/mnscloud/webapps/webapps.env`:
 
 ```env
-WEBAPPS_RUNTIME_KIT_REF=v0.1.2
+WEBAPPS_RUNTIME_KIT_REF=v0.1.6
 ```
 
 Use `main` only for development environments.
