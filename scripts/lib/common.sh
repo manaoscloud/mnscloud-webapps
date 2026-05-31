@@ -53,7 +53,7 @@ ensure_runtime_kit() {
     git clone "$WEBAPPS_RUNTIME_KIT_REPO_URL" "$WEBAPPS_RUNTIME_KIT_DIR"
   fi
 
-  git -C "$WEBAPPS_RUNTIME_KIT_DIR" checkout "$WEBAPPS_RUNTIME_KIT_REF"
+  git -C "$WEBAPPS_RUNTIME_KIT_DIR" -c advice.detachedHead=false checkout "$WEBAPPS_RUNTIME_KIT_REF"
   git -C "$WEBAPPS_RUNTIME_KIT_DIR" pull --ff-only origin "$WEBAPPS_RUNTIME_KIT_REF" 2>/dev/null || true
   [[ -r "${WEBAPPS_RUNTIME_KIT_DIR}/lib/packages.sh" ]] || die "runtime kit packages library not found"
 }
@@ -79,6 +79,7 @@ install_or_update_flutter() {
   load_runtime_kit
   export MNSCLOUD_FLUTTER_DIR="${WEBAPPS_FLUTTER_DIR:-/opt/flutter}"
   export MNSCLOUD_FLUTTER_CHANNEL="${WEBAPPS_FLUTTER_CHANNEL:-stable}"
+  export MNSCLOUD_FLUTTER_BUILD_PROFILE="${WEBAPPS_FLUTTER_BUILD_PROFILE:-web}"
   export MNSCLOUD_FLUTTER_PRECACHE_WEB=true
   mrtk_install_or_update_flutter
 }
@@ -95,6 +96,7 @@ ensure_flutter() {
   load_runtime_kit
   export MNSCLOUD_FLUTTER_DIR="${WEBAPPS_FLUTTER_DIR:-/opt/flutter}"
   export MNSCLOUD_FLUTTER_CHANNEL="${WEBAPPS_FLUTTER_CHANNEL:-stable}"
+  export MNSCLOUD_FLUTTER_BUILD_PROFILE="${WEBAPPS_FLUTTER_BUILD_PROFILE:-web}"
   export MNSCLOUD_FLUTTER_PRECACHE_WEB=true
   mrtk_ensure_flutter
   command -v flutter >/dev/null 2>&1 || die "Flutter installation failed"
@@ -156,6 +158,7 @@ load_runtime_env() {
   WEBAPPS_INSTALL_FLUTTER="${WEBAPPS_INSTALL_FLUTTER:-true}"
   WEBAPPS_FLUTTER_DIR="${WEBAPPS_FLUTTER_DIR:-/opt/flutter}"
   WEBAPPS_FLUTTER_CHANNEL="${WEBAPPS_FLUTTER_CHANNEL:-stable}"
+  WEBAPPS_FLUTTER_BUILD_PROFILE="${WEBAPPS_FLUTTER_BUILD_PROFILE:-web}"
   WEBAPPS_ENABLED_APPS="${WEBAPPS_ENABLED_APPS:-}"
 }
 

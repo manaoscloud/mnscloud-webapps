@@ -60,10 +60,13 @@ builds. Then it disables the default `nginx.service` and starts the isolated
 For production, pin the runtime kit by ref in `/etc/mnscloud/webapps/webapps.env`:
 
 ```env
-WEBAPPS_RUNTIME_KIT_REF=v0.1.0
+WEBAPPS_RUNTIME_KIT_REF=v0.1.1
 ```
 
 Use `main` only for development environments.
+
+The default Flutter dependency profile is `WEBAPPS_FLUTTER_BUILD_PROFILE=web`, which is enough for
+final static web builds. Use `linux` only on hosts that also need Flutter Linux desktop builds.
 
 Review app env files before building:
 
