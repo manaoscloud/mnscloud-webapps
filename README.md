@@ -79,17 +79,17 @@ sudo editor /etc/mnscloud/webapps/apps.d/pulse.env
 
 ## Update
 
-Build one app:
+Update the runtime scripts and build one app:
 
 ```bash
-sudo ./scripts/update-webapps.sh --app pulse --ref main
-sudo ./scripts/update-webapps.sh --app phoneweb --ref main
+sudo ./scripts/update-latest-webapps.sh --env /etc/mnscloud/webapps/webapps.env --app pulse
+sudo ./scripts/update-latest-webapps.sh --env /etc/mnscloud/webapps/webapps.env --app phoneweb
 ```
 
 Build all apps listed in `WEBAPPS_ENABLED_APPS`:
 
 ```bash
-sudo ./scripts/update-webapps.sh
+sudo ./scripts/update-latest-webapps.sh --env /etc/mnscloud/webapps/webapps.env
 ```
 
 ## Validate
