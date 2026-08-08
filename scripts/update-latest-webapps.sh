@@ -5,6 +5,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="/etc/mnscloud/webapps/webapps.env"
 CHANNEL="stable"
 APP=""
+APP_REF=""
 DEFAULT_API_BASE="https://dev.publichost.cloud/api/v1"
 API_BASE="${MNSCLOUD_RELEASE_API_BASE_URL:-${MNSCLOUD_API_BASE_URL:-${API_BASE_URL:-$DEFAULT_API_BASE}}}"
 PRINT_COMMAND=0
@@ -12,11 +13,15 @@ PRINT_COMMAND=0
 usage() {
   cat <<'EOF'
 Usage:
-  sudo ./scripts/update-latest-webapps.sh [--env /etc/mnscloud/webapps/webapps.env] [--app <name>] [--api-base https://dev.publichost.cloud/api/v1] [--channel stable] [--print-command]
+  sudo ./scripts/update-latest-webapps.sh [--env /etc/mnscloud/webapps/webapps.env] [--app <name>] [--app-ref <git-ref>] [--api-base https://dev.publichost.cloud/api/v1] [--channel stable] [--print-command]
 
 Resolves the latest approved mnscloud-webapps runtime release automatically, then applies it.
 If the release registry does not expose this product yet, the helper falls back to the latest
 semver Git tag from origin.
+
+The runtime release ref belongs to this wrapper repository. It is not forwarded to the managed
+webapp repositories. Each app uses APP_REF from its own apps.d/<app>.env unless --app-ref is
+explicitly provided.
 EOF
 }
 
@@ -24,6 +29,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --env) ENV_FILE="${2:-}"; shift 2 ;;
     --app) APP="${2:-}"; shift 2 ;;
+    --app-ref) APP_REF="${2:-}"; shift 2 ;;
     --api-base) API_BASE="${2:-}"; shift 2 ;;
     --channel) CHANNEL="${2:-}"; shift 2 ;;
     --print-command) PRINT_COMMAND=1; shift ;;
@@ -61,11 +67,12 @@ printf '[mnscloud-webapps] latest runtime release: %s\n' "$RELEASE_REF"
 
 APP_ARGS=()
 [[ -n "$APP" ]] && APP_ARGS=(--app "$APP")
+[[ -n "$APP_REF" ]] && APP_ARGS+=(--ref "$APP_REF")
 
 if [[ "$PRINT_COMMAND" == "1" ]]; then
   cat <<EOF
 cd $REPO_ROOT
-sudo ./scripts/update-latest-webapps.sh --env '$ENV_FILE'${APP:+ --app '$APP'}
+sudo ./scripts/update-latest-webapps.sh --env '$ENV_FILE'${APP:+ --app '$APP'}${APP_REF:+ --app-ref '$APP_REF'}
 EOF
   exit 0
 fi
