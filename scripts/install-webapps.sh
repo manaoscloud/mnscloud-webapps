@@ -5,10 +5,26 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib/common.sh
 source "${SCRIPT_DIR}/lib/common.sh"
 
+AGENT_REPO_INSTALLER="/opt/mnscloud/mnscloud-agent/scripts/install-agent.sh"
+
 usage() {
   cat <<EOF
 Usage: scripts/install-webapps.sh [--env /etc/mnscloud/webapps/webapps.env]
 EOF
+}
+
+refresh_agent_capabilities() {
+  local install_label
+  install_label="$(hostname -f 2>/dev/null || hostname 2>/dev/null || printf 'mnscloud-agent')"
+
+  if [[ -x "${AGENT_REPO_INSTALLER}" ]]; then
+    log "refreshing mnscloud-agent capabilities after Webapps runtime install"
+    bash "${AGENT_REPO_INSTALLER}" --install-label "${install_label}"
+    return 0
+  fi
+
+  log "mnscloud-agent source repo not found at ${AGENT_REPO_INSTALLER}; restarting service so runtime capability detection can refresh"
+  systemctl restart mnscloud-agent || true
 }
 
 if ! parse_env_arg "$@"; then
@@ -72,5 +88,6 @@ systemctl daemon-reload
 systemctl enable mnscloud-webapps.service
 webapps_nginx -t
 systemctl restart mnscloud-webapps.service
+refresh_agent_capabilities
 
 log "installed webapps runtime on ${WEBAPPS_LISTEN_HOST}:${WEBAPPS_LISTEN_PORT}"
