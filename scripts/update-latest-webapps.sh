@@ -67,7 +67,7 @@ printf '[mnscloud-webapps] latest runtime release: %s\n' "$RELEASE_REF"
 
 APP_ARGS=()
 [[ -n "$APP" ]] && APP_ARGS=(--app "$APP")
-[[ -n "$APP_REF" ]] && APP_ARGS+=(--ref "$APP_REF")
+[[ -n "$APP_REF" ]] && APP_ARGS+=(--app-ref "$APP_REF")
 
 if [[ "$PRINT_COMMAND" == "1" ]]; then
   cat <<EOF
