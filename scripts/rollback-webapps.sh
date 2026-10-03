@@ -26,20 +26,24 @@ done
 
 [[ -n "$APP" ]] || die "--app is required"
 require_root
+acquire_webapps_lock
 load_runtime_env
 load_app_env "$APP"
 
+active="$(current_app_release || true)"
 if [[ -z "$RELEASE" ]]; then
-  mapfile -t releases < <(find "$APP_RELEASES_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -r)
-  [[ "${#releases[@]}" -ge 2 ]] || die "no previous release available for ${APP_NAME}"
-  RELEASE="${releases[1]}"
+  # Previous release = newest installed release directory other than the active one.
+  RELEASE="$(find "$APP_RELEASES_DIR" -mindepth 1 -maxdepth 1 -type d ! -name '*.partial' \
+    -printf '%T@ %f\n' | sort -rn | awk -v active="$active" '$2 != active { print $2; exit }')"
+  [[ -n "$RELEASE" ]] || die "no previous release available for ${APP_NAME}"
 fi
+[[ "$RELEASE" =~ ^[A-Za-z0-9._+-]+$ ]] || die "invalid release id: ${RELEASE}"
 
 target="${APP_RELEASES_DIR}/${RELEASE}"
-[[ -d "$target" ]] || die "release not found: ${target}"
-ln -sfn "$target" "$APP_CURRENT_LINK"
-render_app_nginx "$APP_NAME"
-render_runtime_nginx
-webapps_nginx -t
-systemctl reload mnscloud-webapps.service 2>/dev/null || systemctl restart mnscloud-webapps.service
-log "${APP_NAME} rolled back to ${RELEASE}"
+[[ -f "${target}/index.html" ]] || die "release not found: ${target}"
+activate_app_release "$target"
+log "${APP_NAME} rolled back from ${active:-none} to ${RELEASE}"
+if [[ "$APP_SOURCE" == "release" && "$APP_REF" == "latest" ]] && is_true "$WEBAPPS_AUTO_SYNC"; then
+  log "WARNING: WEBAPPS_AUTO_SYNC=true and APP_REF=latest will move ${APP_NAME} forward again;" \
+    "pin APP_REF=${RELEASE} in ${WEBAPPS_APPS_DIR}/${APP_NAME}.env to keep the rollback"
+fi

@@ -6,18 +6,18 @@ ENV_FILE="/etc/mnscloud/webapps/webapps.env"
 CHANNEL="stable"
 APP=""
 APP_REF=""
-DEFAULT_API_BASE="https://dev.publichost.cloud/api/v1"
-API_BASE="${MNSCLOUD_RELEASE_API_BASE_URL:-${MNSCLOUD_API_BASE_URL:-${API_BASE_URL:-$DEFAULT_API_BASE}}}"
+API_BASE="${MNSCLOUD_RELEASE_API_BASE_URL:-${MNSCLOUD_API_BASE_URL:-${API_BASE_URL:-}}}"
 PRINT_COMMAND=0
 
 usage() {
   cat <<'EOF'
 Usage:
-  sudo ./scripts/update-latest-webapps.sh [--env /etc/mnscloud/webapps/webapps.env] [--app <name>] [--app-ref <git-ref>] [--api-base https://dev.publichost.cloud/api/v1] [--channel stable] [--print-command]
+  sudo ./scripts/update-latest-webapps.sh [--env /etc/mnscloud/webapps/webapps.env] [--app <name>] [--app-ref <git-ref>] [--api-base https://control-plane.example.com/api/v1] [--channel stable] [--print-command]
 
 Resolves the latest approved mnscloud-webapps runtime release automatically, then applies it.
-If the release registry does not expose this product yet, the helper falls back to the latest
-semver Git tag from origin.
+The release registry is queried at --api-base, MNSCLOUD_RELEASE_API_BASE_URL, or
+WEBAPPS_RELEASE_API_BASE_URL from the env file. Without a registry URL, or when the registry does
+not expose this product, the helper falls back to the latest semver Git tag from origin.
 
 The runtime release ref belongs to this wrapper repository. It is not forwarded to the managed
 webapp repositories. Each app uses APP_REF from its own apps.d/<app>.env unless --app-ref is
@@ -38,8 +38,26 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+registry_base_from_env_file() {
+  [[ -r "$ENV_FILE" ]] || return 0
+  awk -F= '$1 == "WEBAPPS_RELEASE_API_BASE_URL" { sub(/^[^=]*=/, ""); gsub(/^["\x27]|["\x27]$/, ""); print; exit }' "$ENV_FILE"
+}
+
 resolve_ref() {
-  API_BASE="${API_BASE:-$DEFAULT_API_BASE}"
+  API_BASE="${API_BASE:-$(registry_base_from_env_file)}"
+  local ref=""
+  if [[ -n "$API_BASE" ]]; then
+    ref="$(resolve_registry_ref)"
+  fi
+  if [[ -n "$ref" ]]; then
+    printf '%s\n' "$ref"
+    return 0
+  fi
+  git -C "$REPO_ROOT" fetch --tags --prune origin
+  git -C "$REPO_ROOT" tag -l 'v*' --sort=-v:refname | head -n1
+}
+
+resolve_registry_ref() {
   API_BASE="${API_BASE%/}"
   [[ "$API_BASE" == */api/v1 ]] || API_BASE="${API_BASE}/api/v1"
   local ref
@@ -53,12 +71,7 @@ with urllib.request.urlopen(os.environ["MNSCLOUD_RELEASE_URL"], timeout=10) as r
 print(data.get("ref") or "")
 PY
   )"
-  if [[ -n "$ref" ]]; then
-    printf '%s\n' "$ref"
-    return 0
-  fi
-  git -C "$REPO_ROOT" fetch --tags --prune origin
-  git -C "$REPO_ROOT" tag -l 'v*' --sort=-v:refname | head -n1
+  printf '%s\n' "$ref"
 }
 
 RELEASE_REF="$(resolve_ref)"

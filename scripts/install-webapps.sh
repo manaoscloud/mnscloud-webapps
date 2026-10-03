@@ -44,9 +44,7 @@ load_runtime_env
 install_nginx_package
 disable_default_nginx_service
 ensure_service_user
-ensure_flutter
-NGINX_BIN="$(command -v nginx || true)"
-[[ -n "$NGINX_BIN" ]] || die "nginx is required"
+ensure_release_tools
 
 install -d -m 0755 "$WEBAPPS_ROOT" \
   "$WEBAPPS_ROOT/repos" \
@@ -54,40 +52,23 @@ install -d -m 0755 "$WEBAPPS_ROOT" \
   "$WEBAPPS_ROOT/current" \
   "$WEBAPPS_ROOT/runtime/logs" \
   "$WEBAPPS_ENV_DIR/apps.d" \
-  "$WEBAPPS_ENV_DIR/nginx/apps"
+  "$WEBAPPS_ENV_DIR/nginx/apps" \
+  "$WEBAPPS_ENV_DIR/nginx/servers"
 
 for example in "${ROOT_DIR}"/config/apps.d/*.env.example; do
   target="${WEBAPPS_APPS_DIR}/$(basename "${example%.example}")"
   [[ -f "$target" ]] || install -m 0640 "$example" "$target"
 done
 
+ensure_flutter_if_required
 render_runtime_nginx
-
-cat > /etc/systemd/system/mnscloud-webapps.service <<EOF
-[Unit]
-Description=MNSCloud private webapps static runtime
-After=network.target
-
-[Service]
-Type=forking
-PIDFile=${WEBAPPS_ROOT}/runtime/nginx.pid
-ExecStartPre=${NGINX_BIN} -p ${WEBAPPS_ROOT}/runtime -c ${WEBAPPS_ROOT}/runtime/nginx.conf -t
-ExecStart=${NGINX_BIN} -p ${WEBAPPS_ROOT}/runtime -c ${WEBAPPS_ROOT}/runtime/nginx.conf
-ExecReload=${NGINX_BIN} -p ${WEBAPPS_ROOT}/runtime -c ${WEBAPPS_ROOT}/runtime/nginx.conf -s reload
-ExecStop=${NGINX_BIN} -p ${WEBAPPS_ROOT}/runtime -c ${WEBAPPS_ROOT}/runtime/nginx.conf -s quit
-PrivateTmp=true
-ProtectSystem=full
-ReadWritePaths=${WEBAPPS_ROOT} ${WEBAPPS_ENV_DIR}
-
-[Install]
-WantedBy=multi-user.target
-EOF
+render_runtime_units
 
 chown -R "$WEBAPPS_USER:$WEBAPPS_GROUP" "$WEBAPPS_ROOT"
-systemctl daemon-reload
 systemctl enable mnscloud-webapps.service
 webapps_nginx -t
 systemctl restart mnscloud-webapps.service
 refresh_agent_capabilities
 
 log "installed webapps runtime on ${WEBAPPS_LISTEN_HOST}:${WEBAPPS_LISTEN_PORT}"
+log "review ${WEBAPPS_APPS_DIR}/*.env, then install apps with scripts/update-webapps.sh --env ${ENV_FILE}"

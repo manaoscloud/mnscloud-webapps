@@ -27,12 +27,16 @@ while [[ $# -gt 0 ]]; do
 done
 
 require_root
+acquire_webapps_lock
 if [[ -n "$RUNTIME_REF" ]]; then
   ensure_git
   git -C "$ROOT_DIR" fetch --tags --prune origin
   git -C "$ROOT_DIR" -c advice.detachedHead=false checkout "$RUNTIME_REF"
 fi
 load_runtime_env
+# Re-render units and the runtime config so runtime upgrades apply template changes.
+render_runtime_units
+render_runtime_nginx
 
 if [[ -n "$APP" ]]; then
   "${SCRIPT_DIR}/build-app.sh" --env "$ENV_FILE" --app "$APP" "${APP_REF_ARGS[@]}"

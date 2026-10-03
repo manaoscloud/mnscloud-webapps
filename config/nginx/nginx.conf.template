@@ -15,8 +15,11 @@ http {
   keepalive_timeout 30s;
   client_max_body_size 10m;
 
+  # Client allowlist rendered from WEBAPPS_ALLOWED_CLIENTS (applies to every server below).
+  include {{WEBAPPS_ENV_DIR}}/nginx/access.conf;
+
   server {
-    listen {{WEBAPPS_LISTEN_HOST}}:{{WEBAPPS_LISTEN_PORT}};
+    listen {{WEBAPPS_LISTEN_HOST}}:{{WEBAPPS_LISTEN_PORT}} default_server;
     server_name _;
 
     location = /healthz {
@@ -28,6 +31,10 @@ http {
       return 404;
     }
 
+    # Path-based apps (APP_BASE_PATH such as /phoneweb/).
     include {{WEBAPPS_ENV_DIR}}/nginx/apps/*.conf;
   }
+
+  # Host-based apps served at the root of their own domain (APP_SERVER_NAME).
+  include {{WEBAPPS_ENV_DIR}}/nginx/servers/*.conf;
 }
