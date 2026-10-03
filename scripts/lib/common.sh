@@ -222,7 +222,8 @@ load_app_env() {
   [[ -f "$app_env" ]] || die "app env file not found: $app_env"
 
   unset APP_NAME APP_REPO_URL APP_REF APP_BASE_PATH APP_PUBLIC_API_BASE_URL APP_BUILD_COMMAND \
-    APP_SOURCE APP_RELEASE_REPOSITORY APP_RELEASE_ASSET_PREFIX APP_SERVER_NAME APP_IMMUTABLE_PATHS
+    APP_SOURCE APP_RELEASE_REPOSITORY APP_RELEASE_ASSET_PREFIX APP_SERVER_NAME APP_IMMUTABLE_PATHS \
+    APP_ROUTING
   load_env_file "$app_env"
 
   APP_NAME="${APP_NAME:-$app}"
@@ -259,6 +260,15 @@ load_app_env() {
   done
   APP_BASE_PATH="$(normalize_base_path "${APP_BASE_PATH:-/$app/}")"
   [[ "$APP_BASE_PATH" =~ ^/([A-Za-z0-9._-]+/)*$ ]] || die "invalid APP_BASE_PATH for $app"
+  # spa: unknown paths fall back to index.html (Flutter/SPA). static: real files, $uri.html and
+  # 404.html (multi-page static sites such as the website). Host-based apps default to static.
+  if [[ -n "$APP_SERVER_NAME" ]]; then
+    APP_ROUTING="${APP_ROUTING:-static}"
+  else
+    APP_ROUTING="${APP_ROUTING:-spa}"
+  fi
+  [[ "$APP_ROUTING" == "spa" || "$APP_ROUTING" == "static" ]] ||
+    die "APP_ROUTING must be 'spa' or 'static' for $app"
   APP_PUBLIC_API_BASE_URL="${APP_PUBLIC_API_BASE_URL:-/api/v1}"
   APP_REPO_DIR="${WEBAPPS_ROOT}/repos/${APP_NAME}"
   APP_RELEASES_DIR="${WEBAPPS_ROOT}/releases/${APP_NAME}"
@@ -304,16 +314,32 @@ render_runtime_nginx() {
     "$template" > "${WEBAPPS_ROOT}/runtime/nginx.conf"
 }
 
+# Renders the try_files/error_page lines for APP_ROUTING relative to the app's base path.
+app_routing_directives() {
+  local base="$1"
+  if [[ "$APP_ROUTING" == "static" ]]; then
+    printf '    try_files $uri $uri/ $uri.html =404;\n    error_page 404 %s404.html;\n' "$base"
+  else
+    printf '    try_files $uri $uri/ %sindex.html;\n' "$base"
+  fi
+}
+
 render_app_nginx() {
   local app="$1"
   load_app_env "$app"
   install -d -m 0755 "${WEBAPPS_ENV_DIR}/nginx/apps" "${WEBAPPS_ENV_DIR}/nginx/servers"
   local path_conf="${WEBAPPS_ENV_DIR}/nginx/apps/${APP_NAME}.conf"
   local server_conf="${WEBAPPS_ENV_DIR}/nginx/servers/${APP_NAME}.conf"
+  local app_root="${WEBAPPS_ROOT}/current/${APP_NAME}"
   local immutable immutable_locations=""
+  # Root apps (host-based or APP_BASE_PATH=/) map URLs directly onto the release directory;
+  # sub-path apps map /<base>/... onto current/ (the release symlink carries the base name).
+  local immutable_root="$app_root"
+  [[ -z "$APP_SERVER_NAME" && "$APP_BASE_PATH" != "/" ]] && immutable_root="${WEBAPPS_ROOT}/current"
   for immutable in $APP_IMMUTABLE_PATHS; do
     immutable_locations+="
   location ^~ ${immutable} {
+    root ${immutable_root};
     try_files \$uri =404;
     add_header Cache-Control \"public, max-age=31536000, immutable\" always;
   }
@@ -326,7 +352,7 @@ render_app_nginx() {
 server {
   listen ${WEBAPPS_LISTEN_HOST}:${WEBAPPS_LISTEN_PORT};
   server_name ${APP_SERVER_NAME};
-  root ${WEBAPPS_ROOT}/current/${APP_NAME};
+  root ${app_root};
   index index.html;
 
   location ~ (^|/)\. {
@@ -334,26 +360,41 @@ server {
   }
 ${immutable_locations}
   location / {
-    try_files \$uri \$uri/ \$uri.html =404;
+$(app_routing_directives /)
     add_header Cache-Control "no-cache" always;
   }
-
-  error_page 404 /404.html;
 }
 EOF
     return 0
   fi
 
   rm -f "$server_conf"
+
+  if [[ "$APP_BASE_PATH" == "/" ]]; then
+    # Root app of the default server: answers any Host the edge forwards (for example a website
+    # deployed on whatever domain points here). Sub-path apps, /healthz and dotfile blocking keep
+    # precedence because their locations are more specific.
+    cat > "$path_conf" <<EOF
+${immutable_locations}
+location / {
+  root ${app_root};
+  index index.html;
+$(app_routing_directives /)
+  add_header Cache-Control "no-cache" always;
+}
+EOF
+    return 0
+  fi
+
   local no_slash="${APP_BASE_PATH%/}"
   cat > "$path_conf" <<EOF
 location = ${no_slash} {
   return 301 ${APP_BASE_PATH};
 }
-
+${immutable_locations}
 location ^~ ${APP_BASE_PATH} {
   root ${WEBAPPS_ROOT}/current;
-  try_files \$uri \$uri/ ${APP_BASE_PATH}index.html;
+$(app_routing_directives "$APP_BASE_PATH")
   add_header Cache-Control "no-cache" always;
 }
 EOF
