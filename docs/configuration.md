@@ -33,8 +33,9 @@ copies `config/apps.d/*.env.example` once and never overwrites existing files.
 | --- | --- | --- |
 | `APP_NAME` | all | Must match the file name. |
 | `APP_SOURCE` | all | `release` (prebuilt GitHub Release artifact) or `build` (Flutter source build). Defaults to `build` for older env files. |
-| `APP_BASE_PATH` | path-based | Public path such as `/phoneweb/`. Release bundles get `<base href>` rewritten to it. |
-| `APP_SERVER_NAME` | host-based | Space-separated host names; serves the app at `/` in its own server block. |
+| `APP_BASE_PATH` | path/root | Public path such as `/phoneweb/`; `/` makes it the root app of the default server, answering any `Host` (one per runtime). Release bundles get `<base href>` rewritten to it. |
+| `APP_ROUTING` | all | `spa` (fallback to `index.html`; default for path/root apps) or `static` (files, `$uri.html`, `404.html`; default for host-based apps). |
+| `APP_SERVER_NAME` | host-based | Optional space-separated host names; serves the app at `/` in its own server block that answers only those names. |
 | `APP_IMMUTABLE_PATHS` | all | Fingerprinted asset prefixes (for example `/_astro/`) cached as immutable. |
 | `APP_RELEASE_REPOSITORY` | `release` | `<owner>/<repo>` publishing the artifact. |
 | `APP_RELEASE_ASSET_PREFIX` | `release` | Asset prefix; default `<repo>-web-v`, giving `<repo>-web-v<version>.tar.gz`. |

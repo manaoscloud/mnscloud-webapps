@@ -14,8 +14,10 @@ MNSCloud clients (PhoneWeb, Pulse, the public website, and future lightweight mo
   release (`<repo>-web-v<version>.tar.gz` + `.sha256`). Keep `APP_SOURCE=build` only for builds
   that need host-specific `--dart-define` values; it requires Flutter on the host.
 - Never skip checksum verification or the archive path checks when installing artifacts.
-- Host-based apps (`APP_SERVER_NAME`) serve a site at `/` of its own domain; path-based apps use
-  `APP_BASE_PATH`. Keep both modes working when changing nginx rendering.
+- The website is white-label: serve it as the root app (`APP_BASE_PATH=/`, `APP_ROUTING=static`) so
+  it answers any domain; never require a fixed domain in webapps. Path apps use `APP_BASE_PATH`;
+  `APP_SERVER_NAME` is optional host pinning. Keep path, root and host-based modes working when
+  changing nginx rendering.
 - Restrict the listener with `WEBAPPS_ALLOWED_CLIENTS` when it is not bound to loopback.
 - Do not hardcode MNSCloud domains or private addresses in scripts, examples, or docs; use
   placeholders and env settings.

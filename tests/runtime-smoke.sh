@@ -118,7 +118,7 @@ WEBAPPS_LISTEN_HOST=127.0.0.1
 WEBAPPS_LISTEN_PORT=${PORT}
 WEBAPPS_ALLOWED_CLIENTS=192.0.2.10
 WEBAPPS_GITHUB_BASE_URL=http://127.0.0.1:${GH_PORT}
-WEBAPPS_ENABLED_APPS=phoneweb,website
+WEBAPPS_ENABLED_APPS=phoneweb,website,pinned
 WEBAPPS_KEEP_RELEASES=1
 WEBAPPS_INSTALL_FLUTTER=auto
 EOF
@@ -131,11 +131,19 @@ APP_REF=v1.0.0
 EOF
 cat > "${WORK}/etc/apps.d/website.env" <<'EOF'
 APP_NAME=website
-APP_SERVER_NAME=www.example.test example.test
+APP_BASE_PATH=/
+APP_ROUTING=static
 APP_SOURCE=release
 APP_RELEASE_REPOSITORY=demo/mnscloud-website
 APP_REF=latest
 APP_IMMUTABLE_PATHS=/_astro/
+EOF
+cat > "${WORK}/etc/apps.d/pinned.env" <<'EOF'
+APP_NAME=pinned
+APP_SERVER_NAME=pinned.example.test
+APP_SOURCE=release
+APP_RELEASE_REPOSITORY=demo/mnscloud-website
+APP_REF=v2.0.0
 EOF
 cat > "${WORK}/etc/apps.d/tampered.env" <<'EOF'
 APP_NAME=tampered
@@ -171,16 +179,27 @@ curl -fsSI "${base}/phoneweb/assets/app.js" | grep -qi '^cache-control: no-cache
 [[ -f "${WORK}/root/releases/phoneweb/v1.0.0.json" ]] || fail "release record missing"
 pass "pinned release installed, verified, base href rewritten, SPA fallback, cache headers"
 
-# --- host-based app with "latest" -----------------------------------------------------------
+# --- root app (any domain) with "latest", next to the path-based app ----------------------------
 bash "${ROOT_DIR}/scripts/build-app.sh" --env "$ENV" --app website >/dev/null
 [[ "$(readlink "${WORK}/root/current/website")" == */v2.0.0 ]] || fail "latest not resolved to v2.0.0"
-[[ "$(curl -fsS -H 'Host: www.example.test' "${base}/")" == *website-one* ]] || fail "website root"
-[[ "$(curl -fsS -H 'Host: example.test' "${base}/about/")" == *"about website-one"* ]] || fail "website subpage"
-[[ "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: www.example.test' "${base}/missing")" == "404" ]] || fail "website 404"
-curl -fsSI -H 'Host: www.example.test' "${base}/_astro/app.123.css" | grep -qi 'immutable' || fail "immutable cache"
-[[ "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: www.example.test' "${base}/.env")" == "404" ]] || fail "dotfile blocked"
-[[ "$(curl -fsS -H 'Host: unknown.test' "${base}/healthz")" == "ok" ]] || fail "default server for unknown hosts"
-pass "host-based app resolved latest, serves root/subpages/404, immutable assets, dotfiles blocked"
+for host in www.any-customer.test another-partner.example 127.0.0.1; do
+  [[ "$(curl -fsS -H "Host: ${host}" "${base}/")" == *website-one* ]] || fail "website root for Host ${host}"
+done
+[[ "$(curl -fsS -H 'Host: any.test' "${base}/about/")" == *"about website-one"* ]] || fail "website subpage"
+[[ "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: any.test' "${base}/missing")" == "404" ]] || fail "website 404"
+[[ "$(curl -sS -H 'Host: any.test' "${base}/missing")" == *"not found"* ]] || fail "website 404.html body"
+curl -fsSI -H 'Host: any.test' "${base}/_astro/app.123.css" | grep -qi 'immutable' || fail "immutable cache"
+[[ "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: any.test' "${base}/.env")" == "404" ]] || fail "dotfile blocked"
+[[ "$(curl -fsS -H 'Host: any.test' "${base}/phoneweb/")" == *phoneweb-one* ]] || fail "path app beside root app"
+[[ "$(curl -fsS -H 'Host: any.test' "${base}/phoneweb/deep/route")" == *phoneweb-one* ]] || fail "SPA beside root app"
+[[ "$(curl -fsS -H 'Host: any.test' "${base}/healthz")" == "ok" ]] || fail "healthz beside root app"
+pass "root app answers any domain (root/subpages/404/immutable/dotfiles) beside path apps and healthz"
+
+# --- optional host-pinned app --------------------------------------------------------------------
+bash "${ROOT_DIR}/scripts/build-app.sh" --env "$ENV" --app pinned >/dev/null
+[[ "$(curl -fsS -H 'Host: pinned.example.test' "${base}/about/")" == *"about website-one"* ]] || fail "pinned host"
+[[ "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: pinned.example.test' "${base}/phoneweb/")" == "404" ]] || fail "pinned server must not serve path apps"
+pass "host-pinned app answers only its own server_name"
 
 # --- allowlist rendered -----------------------------------------------------------------------
 grep -qx 'allow 192.0.2.10;' "${WORK}/etc/nginx/access.conf" || fail "allowlist entry"

@@ -5,8 +5,8 @@ the public website, and future lightweight modules.
 
 This module is not the public edge. Public HTTP/S, TLS, rate limiting, and external routing are
 owned by `mnscloud-nginx`. WebApps listens on a private host/port and serves static bundles that the
-edge proxies either under paths such as `/phoneweb/` and `/pulse/` or, for host-based apps such as
-the website, at the root of their own domain.
+edge proxies under paths such as `/phoneweb/` and `/pulse/`, plus at most one root app (the
+website) that answers any domain the edge forwards to it.
 
 ## Contract
 
@@ -51,13 +51,19 @@ Release artifacts are produced by each client repository's release workflow thro
 repository, asset, and SHA-256. `current/<app>` points at the active release. Besides the active
 release, the newest `WEBAPPS_KEEP_RELEASES` previous releases are kept for rollback.
 
-### Path-based and host-based apps
+### Path-based, root, and host-based apps
 
 - Path-based (default): served under `APP_BASE_PATH` (for example `/phoneweb/`) on the default
-  server, with single-page-app fallback to `index.html`.
-- Host-based: set `APP_SERVER_NAME` (space-separated host names). The app gets its own `server`
-  block at `/`, serving static files with `404.html` fallback. Use this for the website
-  (`config/apps.d/website.env.example`); the edge must forward the original `Host` header.
+  server.
+- Root app: `APP_BASE_PATH=/` serves the app at `/` of the default server for **any** `Host`, next to
+  the path-based apps (`/phoneweb/`, `/pulse/` and `/healthz` stay more specific and keep working).
+  Use this for the website, which is white-label and has no fixed domain
+  (`config/apps.d/website.env.example`). Only one enabled app may be the root app.
+- Host-based (optional): `APP_SERVER_NAME` (space-separated host names) gives the app its own
+  `server` block at `/` that only answers those names.
+- `APP_ROUTING=spa` (default for path/root apps) falls back to the app's `index.html` for unknown
+  paths (Flutter/SPA). `APP_ROUTING=static` (default for host-based apps; set it for the website)
+  serves real files and `$uri.html`, with `404.html` for missing pages.
 - `APP_IMMUTABLE_PATHS` (for example `/_astro/`) marks fingerprinted asset prefixes for
   long-lived immutable caching. Everything else is served with `Cache-Control: no-cache`, so
   browsers revalidate and pick up new releases.
@@ -195,10 +201,12 @@ MNSCLOUD_PHONEWEB_PATH=/phoneweb/
 MNSCLOUD_PULSE_PATH=/pulse/
 ```
 
-Expose the host-based website by pointing the edge website upstream at the same listener:
+Expose the website by pointing the edge website upstream at the same listener. The webapps side
+needs no domain: the root app answers whatever `Host` the edge forwards. The domain is chosen only
+by whoever operates the edge:
 
 ```env
-MNSCLOUD_WEBSITE_DOMAIN=www.example.com
+MNSCLOUD_WEBSITE_DOMAIN=<the-domain-you-serve-the-website-on>
 MNSCLOUD_WEBSITE_UPSTREAM=http://<webapps-private-ip>:8080
 ```
 

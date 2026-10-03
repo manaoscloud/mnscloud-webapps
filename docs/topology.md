@@ -9,7 +9,7 @@ public internet
        -> /            -> mnscloud-app
        -> /phoneweb/   -> mnscloud-webapps (path-based app)
        -> /pulse/      -> mnscloud-webapps (path-based app)
-       -> website host -> mnscloud-webapps (host-based app, original Host header)
+       -> any website domain -> mnscloud-webapps (root app, answers any Host)
 ```
 
 `mnscloud-webapps` listens privately. Restrict its listen port to the edge with
