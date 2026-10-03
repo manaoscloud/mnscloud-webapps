@@ -5,10 +5,17 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   shell:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - name: Validate shell syntax
-        run: bash -n scripts/*.sh scripts/lib/*.sh
+        run: bash -n scripts/*.sh scripts/lib/*.sh tests/*.sh
+      - name: Install nginx for the runtime smoke test
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq nginx-light
+      - name: Runtime smoke test (release artifacts, path/host apps, checksum, rollback)
+        run: sudo bash tests/runtime-smoke.sh
