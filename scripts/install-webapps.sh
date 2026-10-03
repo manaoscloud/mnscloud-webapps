@@ -13,9 +13,22 @@ Usage: scripts/install-webapps.sh [--env /etc/mnscloud/webapps/webapps.env]
 EOF
 }
 
+AGENT_CONFIG_FILE="${AGENT_CONFIG_FILE:-/etc/mnscloud/agent/agent.conf}"
+
+# Prints the enrolled Agent name (MonitoringAgent.MagName) from the local Agent config, if any.
+existing_agent_name() {
+  [[ -r "$AGENT_CONFIG_FILE" ]] || return 0
+  awk '/^[[:space:]]*name[[:space:]]*=/ { sub(/^[^=]*=[[:space:]]*/, ""); sub(/[[:space:]]+$/, ""); print; exit }' \
+    "$AGENT_CONFIG_FILE"
+}
+
 refresh_agent_capabilities() {
   local install_label
-  install_label="$(hostname -f 2>/dev/null || hostname 2>/dev/null || printf 'mnscloud-agent')"
+  # Keep the enrolled Agent name; fall back to the FQDN only when the Agent has no name yet.
+  # Passing the FQDN unconditionally renames Agents that were enrolled with a short name.
+  install_label="$(existing_agent_name)"
+  [[ -n "$install_label" ]] ||
+    install_label="$(hostname -f 2>/dev/null || hostname 2>/dev/null || printf 'mnscloud-agent')"
 
   if [[ -x "${AGENT_REPO_INSTALLER}" ]]; then
     log "refreshing mnscloud-agent capabilities after Webapps runtime install"
