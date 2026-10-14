@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
-"""Agent-owned non-secret WebApps reconciliation: which apps this runtime serves.
+"""Agent-owned non-secret WebApps reconciliation: which apps this runtime serves and where.
 
 Resource `webapps.apps` manages WEBAPPS_ENABLED_APPS in /etc/mnscloud/webapps/webapps.env.
+Resource `webapps.listener` manages WEBAPPS_LISTEN_HOST (an address of this host) and
+WEBAPPS_ALLOWED_CLIENTS (allowed IPs/CIDRs, typically the edge; empty removes the allowlist),
+so the edge can reach the runtime over the private network.
 
   inspect  enabled apps, apps this release can enable, installed releases, last baseline
   plan     three-way compare (baseline, current file, desired) and record a digest-bound plan;
@@ -41,6 +44,13 @@ STATE = '/var/lib/mnscloud/runtime-reconcile/mnscloud-webapps'
 RESOURCE = 'webapps.apps'
 FIELD = 'WEBAPPS_ENABLED_APPS'
 RULES = (Rule(FIELD, 'managed'),)
+LISTENER = 'webapps.listener'
+LISTEN_HOST = 'WEBAPPS_LISTEN_HOST'
+ALLOWED_CLIENTS = 'WEBAPPS_ALLOWED_CLIENTS'
+LISTENER_FIELDS = (LISTEN_HOST, ALLOWED_CLIENTS)
+LISTENER_RULES = (Rule(LISTEN_HOST, 'managed'), Rule(ALLOWED_CLIENTS, 'managed-optional'))
+IPV4 = re.compile(r'(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}\Z')
+MAX_CLIENTS = 16
 APP = re.compile(r'[a-z0-9][a-z0-9_-]{0,62}\Z')
 MAX_APPS = 30
 RELEASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -391,8 +401,138 @@ def apply(digest):
                      for row in status()]}
 
 
-def execute(stage, desired=None, digest=None, resolution=None):
+def host_addresses():
+    output = command(['ip', '-o', '-4', 'addr', 'show'], error='HOST_ADDRESSES_UNKNOWN')
+    return set(re.findall(r'inet (\d+\.\d+\.\d+\.\d+)/', output))
+
+
+def validate_listener(desired):
+    if not isinstance(desired, dict) or not desired or set(desired) - set(LISTENER_FIELDS):
+        raise ReconcileError('UNKNOWN_MANAGED_FIELD')
+    host = desired.get(LISTEN_HOST)
+    if host is not None:
+        if not isinstance(host, str) or not IPV4.fullmatch(host):
+            raise ReconcileError('INVALID_LISTEN_HOST')
+        if host not in ('0.0.0.0', '127.0.0.1') and host not in host_addresses():
+            raise ReconcileError('LISTEN_HOST_NOT_ON_THIS_HOST')
+    clients = desired.get(ALLOWED_CLIENTS)
+    if clients is not None:
+        items = clients.split(',') if clients else []
+        if not isinstance(clients, str) or len(items) > MAX_CLIENTS or any(
+                not IPV4.fullmatch(item.split('/')[0]) or ('/' in item and not re.fullmatch(r'\d{1,2}', item.split('/', 1)[1]))
+                for item in items):
+            raise ReconcileError('INVALID_ALLOWED_CLIENTS')
+
+
+def listener_values(source=None):
+    values = env_values(source or read_env())
+    return {field: values.get(field, '') for field in LISTENER_FIELDS}
+
+
+def inspect_listener():
+    baseline = load_private('baseline.listener.json')
+    return {'status': 'success', 'current': listener_values(),
+            'baseline': baseline.get('fields') if isinstance(baseline, dict) else None,
+            'release': release_tag(RELEASE), 'installedRelease': release_tag(RUNTIME)}
+
+
+def plan_listener(desired, resolution):
+    validate_listener(desired)
+    release = require_matching_runtime()
+    current = listener_values()
+    baseline = load_private('baseline.listener.json')
+    base = baseline.get('fields') if isinstance(baseline, dict) else None
+    conflicts, changes = [], {}
+    for field, wanted in sorted(desired.items()):
+        now = current[field]
+        if now == wanted:
+            continue
+        known = None if base is None else base.get(field)
+        # Filling an absent field is not drift; changing a value needs a matching baseline.
+        if now and (known is None or known != now) and resolution != 'adopt-desired':
+            conflicts.append({'field': field, 'current': now, 'baseline': known, 'desired': wanted,
+                              'reason': 'no-baseline' if known is None else 'local-drift'})
+        changes[field] = wanted
+    identity = {'version': 1, 'resource': LISTENER, 'release': release, 'before': current, 'desired': desired}
+    if conflicts:
+        identity['operationUUID'], status_value = None, 'blocked'
+    elif not changes:
+        identity['operationUUID'], status_value = None, 'unchanged'
+    else:
+        operation = str(uuid.uuid4())
+        EnvJournal(ENV, STATE, LISTENER_RULES).stage(operation, changes, {field: current[field] for field in changes})
+        identity['operationUUID'], status_value = operation, 'ready'
+    digest = hashlib.sha256(canonical(identity)).hexdigest()
+    save_private(digest + '.plan.json', {'identity': identity, 'activation': 'pending'})
+    return {'status': status_value, 'planDigest': digest, 'changed': status_value == 'ready',
+            'operations': [{'op': 'set', 'field': field, 'from': current[field], 'to': value}
+                           for field, value in changes.items()],
+            'conflicts': conflicts, 'current': current,
+            'desired': {field: desired.get(field, current[field]) for field in LISTENER_FIELDS}}
+
+
+def rerender_runtime():
+    """Installed update path: units, runtime nginx and access rules, then every enabled app."""
+    command([os.path.join(RUNTIME, 'scripts', 'update-webapps.sh'), '--env', ENV],
+            timeout=1800, error='WEBAPPS_RERENDER_FAILED')
+    command(['systemctl', 'reload', 'mnscloud-webapps.service'], timeout=60, error='WEBAPPS_RELOAD_FAILED')
+
+
+def apply_listener(digest):
+    if not re.fullmatch(r'[a-f0-9]{64}', digest or ''):
+        raise ReconcileError('INVALID_APPLY_DIGEST')
+    record = load_private(digest + '.plan.json')
+    if not record:
+        raise ReconcileError('PLAN_NOT_FOUND')
+    identity = record['identity']
+    if hashlib.sha256(canonical(identity)).hexdigest() != digest or identity['resource'] != LISTENER:
+        raise ReconcileError('PLAN_MISMATCH')
+    if record['activation'] == 'rolled_back':
+        raise ReconcileError('REPLAN_REQUIRED_AFTER_ROLLBACK')
+    if record['activation'] == 'verified':
+        return {'status': 'success', 'outcome': 'unchanged', 'planDigest': digest, 'activation': 'verified'}
+    if identity['operationUUID'] is None:
+        if any(listener_values()[field] != value for field, value in identity['desired'].items()):
+            raise ReconcileError('STALE_PLAN')
+        return {'status': 'success', 'outcome': 'unchanged', 'planDigest': digest, 'activation': 'not-required'}
+    if require_matching_runtime() != identity['release']:
+        raise ReconcileError('RUNTIME_RELEASE_MISMATCH')
+    adapter = EnvJournal(ENV, STATE, LISTENER_RULES)
+    result = adapter.apply(identity['operationUUID'])
+    try:
+        rerender_runtime()
+        if not all(served(app) for app in current_apps()):
+            raise ReconcileError('WEBAPPS_LISTENER_VERIFY_FAILED')
+    except Exception as error:
+        cause = str(error) if isinstance(error, ReconcileError) else type(error).__name__
+        record['activation'] = 'rolled_back'
+        save_private(digest + '.plan.json', record)
+        with adapter.locked() as (target, journal):
+            raw, _ = read_file(journal, adapter.name(identity['operationUUID']))
+            staged = json.loads(raw)
+            source, info = read_file(target, os.path.basename(ENV))
+            if source not in (staged['before'].encode(), staged['after'].encode()):
+                raise ReconcileError('ROLLBACK_CONCURRENT_EDIT')
+            atomic_write(target, os.path.basename(ENV), staged['before'].encode(), stat.S_IMODE(info.st_mode), info.st_uid, info.st_gid)
+        rerender_runtime()
+        raise RolledBack('WEBAPPS_ACTIVATION_ROLLED_BACK', cause) from None
+    record['activation'] = 'verified'
+    save_private(digest + '.plan.json', record)
+    baseline = load_private('baseline.listener.json')
+    fields = baseline.get('fields', {}) if isinstance(baseline, dict) else {}
+    save_private('baseline.listener.json', {'fields': {**fields, **identity['desired']}})
+    return {'status': 'success', 'outcome': 'applied', 'planDigest': digest, 'changed': result['changed'],
+            'activation': 'verified', 'listener': listener_values()}
+
+
+def execute(stage, desired=None, digest=None, resolution=None, resource=RESOURCE):
     with operation_lock():
+        if resource == LISTENER:
+            if stage == 'inspect':
+                return inspect_listener()
+            if stage == 'plan':
+                return plan_listener(desired, resolution)
+            return apply_listener(digest)
         if stage == 'inspect':
             return inspect()
         if stage == 'plan':
@@ -411,15 +551,15 @@ def main():
     parser.add_argument('--resolution', choices=['adopt-desired'])
     args = parser.parse_args()
     try:
-        if os.geteuid() != 0 or args.env != ENV or args.resource != RESOURCE:
+        if os.geteuid() != 0 or args.env != ENV or args.resource not in (RESOURCE, LISTENER):
             raise ReconcileError('UNSUPPORTED_LOCAL_TARGET')
         prepare_state()
         desired = None
         if args.stage == 'plan':
             with open(args.desired_json, encoding='utf8') as stream:
                 desired = json.load(stream)
-        result = {'ok': True, 'stage': args.stage, 'resource': RESOURCE,
-                  **execute(args.stage, desired, args.plan_digest, args.resolution)}
+        result = {'ok': True, 'stage': args.stage, 'resource': args.resource,
+                  **execute(args.stage, desired, args.plan_digest, args.resolution, args.resource)}
         code = 0
     except ReconcileError as error:
         message = '%s (cause: %s)' % (error, error.cause) if isinstance(error, RolledBack) else str(error)
