@@ -138,6 +138,11 @@ The control plane changes which apps a host serves without SSH, through `runtime
    examples, installs new apps (`update-webapps.sh --app`), deactivates removed ones
    (`deactivate-webapp.sh`), checks every app over HTTP and rolls everything back on failure.
 
+Resource `webapps.listener` sets where the runtime listens and who may connect
+(`WEBAPPS_LISTEN_HOST`, an address of this host; `WEBAPPS_ALLOWED_CLIENTS`, IPv4/CIDR list, empty
+removes the allowlist). Apply re-renders through `update-webapps.sh`, reloads, checks every enabled
+app on the new address and rolls back on failure. Use it so the edge can reach the runtime.
+
 The adapter is `scripts/reconcile-runtime-config.py`; it requires the installed runtime at the same
 release tag (run the `mnscloud-webapps` runtime update first) and runtime-kit v0.1.53 or newer.
 Publishing the path on the edge is the `mnscloud-nginx` resource `nginx.webapps`.

@@ -110,6 +110,61 @@ class AdapterTests(unittest.TestCase):
             adapter.plan({'WEBAPPS_LISTEN_PORT': '9090'}, 'adopt-desired')
 
 
+class ListenerTests(unittest.TestCase):
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix='.webapps-listener-', dir=Path.home()))
+        os.chmod(self.root, 0o755)
+        self.addCleanup(shutil.rmtree, self.root)
+        (self.root / 'state').mkdir(mode=0o700)
+        self.env = self.root / 'webapps.env'
+        self.env.write_text('WEBAPPS_LISTEN_HOST=127.0.0.1\nWEBAPPS_LISTEN_PORT=8080\nWEBAPPS_ENABLED_APPS=phoneweb\n')
+        os.chmod(self.env, 0o640)
+        self.renders, self.ok = 0, True
+        patches = {'ENV': str(self.env), 'STATE': str(self.root / 'state'),
+                   'require_matching_runtime': lambda: 'v9.9.9', 'host_addresses': lambda: {'10.1.2.3'},
+                   'rerender_runtime': self.rerender, 'served': lambda app: self.ok}
+        for name, value in patches.items():
+            original = getattr(adapter, name)
+            setattr(adapter, name, value)
+            self.addCleanup(setattr, adapter, name, original)
+
+    def rerender(self):
+        self.renders += 1
+
+    def test_listen_on_private_address_for_the_edge(self):
+        desired = {'WEBAPPS_LISTEN_HOST': '10.1.2.3', 'WEBAPPS_ALLOWED_CLIENTS': '10.1.2.9'}
+        self.assertEqual(adapter.plan_listener(desired, None)['status'], 'blocked', 'existing host without baseline')
+        planned = adapter.plan_listener(desired, 'adopt-desired')
+        self.assertEqual(planned['status'], 'ready')
+        result = adapter.apply_listener(planned['planDigest'])
+        self.assertEqual(result['listener'], desired)
+        self.assertIn('WEBAPPS_LISTEN_HOST=10.1.2.3\n', self.env.read_text())
+        self.assertIn('WEBAPPS_ALLOWED_CLIENTS=10.1.2.9\n', self.env.read_text())
+        self.assertEqual(self.renders, 1)
+        self.assertEqual(adapter.plan_listener({'WEBAPPS_ALLOWED_CLIENTS': '10.1.2.0/24'}, None)['status'], 'ready')
+
+    def test_failed_verification_restores_the_listener(self):
+        planned = adapter.plan_listener({'WEBAPPS_LISTEN_HOST': '10.1.2.3'}, 'adopt-desired')
+        self.ok = False
+        with self.assertRaisesRegex(env_reconcile.ReconcileError, '^WEBAPPS_ACTIVATION_ROLLED_BACK$') as raised:
+            adapter.apply_listener(planned['planDigest'])
+        self.assertEqual(raised.exception.cause, 'WEBAPPS_LISTENER_VERIFY_FAILED')
+        self.assertIn('WEBAPPS_LISTEN_HOST=127.0.0.1\n', self.env.read_text())
+        self.assertEqual(self.renders, 2)
+
+    def test_invalid_listener_requests_are_rejected(self):
+        cases = [({'WEBAPPS_LISTEN_HOST': '10.9.9.9'}, 'LISTEN_HOST_NOT_ON_THIS_HOST'),
+                 ({'WEBAPPS_LISTEN_HOST': 'example.com'}, 'INVALID_LISTEN_HOST'),
+                 ({'WEBAPPS_ALLOWED_CLIENTS': '10.1.2.9,any'}, 'INVALID_ALLOWED_CLIENTS'),
+                 ({'WEBAPPS_LISTEN_PORT': '9090'}, 'UNKNOWN_MANAGED_FIELD')]
+        for desired, code in cases:
+            with self.subTest(desired=desired), self.assertRaisesRegex(env_reconcile.ReconcileError, f'^{code}$'):
+                adapter.plan_listener(desired, 'adopt-desired')
+        apps_plan = adapter.plan_listener({'WEBAPPS_LISTEN_HOST': '10.1.2.3'}, 'adopt-desired')
+        with self.assertRaisesRegex(env_reconcile.ReconcileError, '^PLAN_MISMATCH$'):
+            adapter.apply(apps_plan['planDigest'])
+
+
 class ServedRetryTests(unittest.TestCase):
     def test_http_check_waits_for_the_reload(self):
         root = Path(tempfile.mkdtemp(prefix='.webapps-served-', dir=Path.home()))
