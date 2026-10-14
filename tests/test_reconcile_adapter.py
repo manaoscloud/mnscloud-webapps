@@ -87,8 +87,9 @@ class AdapterTests(unittest.TestCase):
     def test_failed_verification_rolls_back_everything(self):
         self.broken.add('customer-portal')
         planned = self.plan('phoneweb,customer-portal', 'adopt-desired')
-        with self.assertRaisesRegex(env_reconcile.ReconcileError, '^WEBAPPS_ACTIVATION_ROLLED_BACK$'):
+        with self.assertRaisesRegex(env_reconcile.ReconcileError, '^WEBAPPS_ACTIVATION_ROLLED_BACK$') as raised:
             adapter.apply(planned['planDigest'])
+        self.assertEqual(raised.exception.cause, 'WEBAPPS_ENABLE_VERIFY_FAILED')
         self.assertIn('WEBAPPS_ENABLED_APPS=phoneweb,pulse\n', self.env.read_text())
         self.assertFalse((Path(adapter.APPS_DIR) / 'customer-portal.env').exists())
         self.assertEqual(self.log, [('disable', 'pulse'), ('enable', 'customer-portal'),
@@ -107,6 +108,26 @@ class AdapterTests(unittest.TestCase):
                 self.plan(value, 'adopt-desired')
         with self.assertRaisesRegex(env_reconcile.ReconcileError, '^UNKNOWN_MANAGED_FIELD$'):
             adapter.plan({'WEBAPPS_LISTEN_PORT': '9090'}, 'adopt-desired')
+
+
+class ServedRetryTests(unittest.TestCase):
+    def test_http_check_waits_for_the_reload(self):
+        root = Path(tempfile.mkdtemp(prefix='.webapps-served-', dir=Path.home()))
+        self.addCleanup(shutil.rmtree, root)
+        (root / 'apps').mkdir()
+        (root / 'apps' / 'demo.conf').write_text('')
+        (root / 'current').mkdir()
+        (root / 'current' / 'demo').symlink_to(root)
+        answers = iter([404, 404, 200])
+        patches = {'NGINX_DIR': str(root), 'WEBAPPS_ROOT': str(root), 'app_settings': lambda app: {},
+                   'listen_url': lambda: 'http://127.0.0.1:8080', 'http_status': lambda url, host=None: next(answers)}
+        for name, value in patches.items():
+            original = getattr(adapter, name)
+            setattr(adapter, name, value)
+            self.addCleanup(setattr, adapter, name, original)
+        self.assertTrue(adapter.served('demo', attempts=5, delay=0))
+        answers = iter([404] * 3)
+        self.assertFalse(adapter.served('demo', attempts=3, delay=0))
 
 
 if __name__ == '__main__':
