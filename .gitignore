@@ -7,3 +7,5 @@ runtime/
 *.env
 !config/*.env.example
 !config/apps.d/*.env.example
+__pycache__/
+.runtime-kit/

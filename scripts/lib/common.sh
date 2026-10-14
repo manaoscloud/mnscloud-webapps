@@ -689,6 +689,30 @@ EOF
 }
 
 # Serializes runtime mutations (Agent update, auto sync, rollback). Nested calls inherit the lock.
+# Creates missing apps.d/<app>.env files from this release's examples; never overwrites, so an
+# app shipped by a newer release can be enabled without editing files on the host.
+seed_app_env_files() {
+  install -d -m 0755 "$WEBAPPS_APPS_DIR"
+  local example target
+  for example in "${ROOT_DIR}"/config/apps.d/*.env.example; do
+    [[ -f "$example" ]] || continue
+    target="${WEBAPPS_APPS_DIR}/$(basename "${example%.example}")"
+    [[ -f "$target" ]] || install -m 0640 "$example" "$target"
+  done
+}
+
+# Stops serving an app: removes its nginx locations/server block and the current release link,
+# then reloads. Releases, state and the app env file stay for a later re-enable or rollback.
+deactivate_app() {
+  local app="$1"
+  load_app_env "$app"
+  rm -f "${WEBAPPS_ENV_DIR}/nginx/apps/${APP_NAME}.conf" "${WEBAPPS_ENV_DIR}/nginx/servers/${APP_NAME}.conf"
+  rm -f "$APP_CURRENT_LINK"
+  render_runtime_nginx
+  webapps_nginx -t
+  systemctl reload mnscloud-webapps.service 2>/dev/null || systemctl restart mnscloud-webapps.service
+}
+
 acquire_webapps_lock() {
   [[ "${MNSCLOUD_WEBAPPS_LOCKED:-0}" == "1" ]] && return 0
   install -d -m 0755 /run/lock

@@ -68,10 +68,7 @@ install -d -m 0755 "$WEBAPPS_ROOT" \
   "$WEBAPPS_ENV_DIR/nginx/apps" \
   "$WEBAPPS_ENV_DIR/nginx/servers"
 
-for example in "${ROOT_DIR}"/config/apps.d/*.env.example; do
-  target="${WEBAPPS_APPS_DIR}/$(basename "${example%.example}")"
-  [[ -f "$target" ]] || install -m 0640 "$example" "$target"
-done
+seed_app_env_files
 
 ensure_flutter_if_required
 render_runtime_nginx

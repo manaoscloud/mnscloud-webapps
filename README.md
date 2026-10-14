@@ -124,11 +124,32 @@ sudo editor /etc/mnscloud/webapps/apps.d/phoneweb.env
 sudo editor /etc/mnscloud/webapps/apps.d/pulse.env
 ```
 
+## Agent reconcile (enable or disable apps)
+
+The control plane changes which apps a host serves without SSH, through `runtime.reconcile`
+(`mnscloud-webapps`, resource `webapps.apps`, field `WEBAPPS_ENABLED_APPS`):
+
+1. `inspect` reports the enabled apps, the apps this release can enable (an `apps.d` env file on
+   the host or a `config/apps.d/<app>.env.example` in the release) and the installed releases.
+2. `plan` with `{"WEBAPPS_ENABLED_APPS":"phoneweb,pulse,customer-portal"}` returns a digest and the
+   operations (`enable_app`, `disable_app`, `seed_app_env`). Without a recorded baseline, or when
+   the file changed locally, the plan is `blocked` unless the job resolution is `adopt-desired`.
+3. `apply` with that digest writes the env, adds the missing app env files from the release
+   examples, installs new apps (`update-webapps.sh --app`), deactivates removed ones
+   (`deactivate-webapp.sh`), checks every app over HTTP and rolls everything back on failure.
+
+The adapter is `scripts/reconcile-runtime-config.py`; it requires the installed runtime at the same
+release tag (run the `mnscloud-webapps` runtime update first) and runtime-kit v0.1.53 or newer.
+Publishing the path on the edge is the `mnscloud-nginx` resource `nginx.webapps`.
+
 ## Update
 
 The control plane updates this runtime through `mnscloud-agent` (`runtime.update` for product
 `mnscloud-webapps`): the Agent checks out the release tag and runs `scripts/update-webapps.sh`,
 which re-renders the service units and runtime config and then installs every enabled app.
+
+Every update also moves the shared runtime kit to its configured channel and adds `apps.d` env
+files for apps the release ships (existing files are never overwritten).
 
 Manual equivalents:
 

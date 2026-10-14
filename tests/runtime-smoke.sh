@@ -242,6 +242,15 @@ bash "${ROOT_DIR}/scripts/rollback-webapps.sh" --env "$ENV" --app phoneweb >/dev
 [[ "$(curl -fsS "${base}/phoneweb/")" == *phoneweb-one* ]] || fail "rollback did not restore v1.0.0"
 pass "sync installs latest, rollback restores the previous release"
 
+# --- deactivate stops serving an app but keeps its releases; reinstall serves it again -------
+bash "${ROOT_DIR}/scripts/deactivate-webapp.sh" --env "$ENV" --app phoneweb >/dev/null
+[[ ! -e "${WORK}/etc/nginx/apps/phoneweb.conf" && ! -L "${WORK}/root/current/phoneweb" ]] || fail "deactivate left phoneweb configured"
+[[ "$(curl -sS -H 'Host: any.test' "${base}/phoneweb/")" != *phoneweb-* ]] || fail "deactivated app still served"
+[[ -d "${WORK}/root/releases/phoneweb/v1.0.0" && -f "${WORK}/etc/apps.d/phoneweb.env" ]] || fail "deactivate removed releases or env"
+bash "${ROOT_DIR}/scripts/build-app.sh" --env "$ENV" --app phoneweb >/dev/null
+[[ "$(curl -fsS "${base}/phoneweb/")" == *phoneweb-* ]] || fail "reinstall after deactivate"
+pass "deactivate-webapp.sh stops serving and keeps releases; reinstall serves again"
+
 bash "${ROOT_DIR}/scripts/validate-webapps.sh" --env "$ENV" >/dev/null || fail "validate-webapps.sh"
 pass "validate-webapps.sh passes for all enabled apps"
 
