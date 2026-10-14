@@ -24,6 +24,7 @@ import re
 import stat
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 import uuid
@@ -155,8 +156,19 @@ def http_status(url, host=None):
         return None
 
 
-def served(app):
-    """The app has nginx configuration, an active release and answers over HTTP."""
+class RolledBack(ReconcileError):
+    """Activation failed and was rolled back; `cause` is the constant code of the failure."""
+
+    def __init__(self, code, cause):
+        super().__init__(code)
+        self.cause = cause
+
+
+def served(app, attempts=10, delay=2.0):
+    """The app has nginx configuration, an active release and answers over HTTP.
+
+    nginx reloads asynchronously, so the HTTP check is retried while old workers drain.
+    """
     settings = app_settings(app)
     base = settings.get('APP_BASE_PATH') or '/%s/' % app
     server_name = (settings.get('APP_SERVER_NAME') or '').split()
@@ -164,7 +176,12 @@ def served(app):
     if not os.path.isfile(conf) or not os.path.islink(os.path.join(WEBAPPS_ROOT, 'current', app)):
         return False
     path = '/' if server_name else base
-    return http_status(listen_url() + path, server_name[0] if server_name else None) == 200
+    for attempt in range(attempts):
+        if http_status(listen_url() + path, server_name[0] if server_name else None) == 200:
+            return True
+        if attempt + 1 < attempts:
+            time.sleep(delay)
+    return False
 
 
 def deactivated(app):
@@ -359,11 +376,12 @@ def apply(digest):
         for app in identity['enable']:
             enable(app)
         verify(identity['enable'], identity['disable'])
-    except Exception:
+    except Exception as error:
+        cause = str(error) if isinstance(error, ReconcileError) else type(error).__name__
         record['activation'] = 'rolled_back'
         save_private(digest + '.plan.json', record)
         rollback(adapter, identity, seeded)
-        raise ReconcileError('WEBAPPS_ACTIVATION_ROLLED_BACK') from None
+        raise RolledBack('WEBAPPS_ACTIVATION_ROLLED_BACK', cause) from None
     record['activation'] = 'verified'
     save_private(digest + '.plan.json', record)
     save_private('baseline.json', {'fields': {FIELD: identity['after']}})
@@ -404,7 +422,8 @@ def main():
                   **execute(args.stage, desired, args.plan_digest, args.resolution)}
         code = 0
     except ReconcileError as error:
-        result, code = {'ok': False, 'errorCode': str(error), 'message': str(error)}, 1
+        message = '%s (cause: %s)' % (error, error.cause) if isinstance(error, RolledBack) else str(error)
+        result, code = {'ok': False, 'errorCode': str(error), 'message': message}, 1
     except Exception:
         result, code = {'ok': False, 'errorCode': 'WEBAPPS_RECONCILE_FAILED', 'message': 'WebApps reconciliation failed.'}, 1
     # This file is selected by the Agent executor, never by an API job payload.
