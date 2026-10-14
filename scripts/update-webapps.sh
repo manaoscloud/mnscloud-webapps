@@ -34,6 +34,10 @@ if [[ -n "$RUNTIME_REF" ]]; then
   git -C "$ROOT_DIR" -c advice.detachedHead=false checkout "$RUNTIME_REF"
 fi
 load_runtime_env
+# Keep the shared runtime kit on its configured channel (reconcile adapters import its libraries)
+# and add env files for apps that this release ships.
+ensure_runtime_kit
+seed_app_env_files
 # Re-render units and the runtime config so runtime upgrades apply template changes.
 render_runtime_units
 render_runtime_nginx

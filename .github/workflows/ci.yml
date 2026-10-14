@@ -19,3 +19,13 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq nginx-light
       - name: Runtime smoke test (release artifacts, path/host apps, checksum, rollback)
         run: sudo bash tests/runtime-smoke.sh
+      - name: Check out the runtime kit for the reconcile adapter tests
+        uses: actions/checkout@v6
+        with:
+          repository: manaoscloud/mnscloud-runtime-kit
+          ref: v0.1.53
+          path: .runtime-kit
+      - name: Agent reconcile adapter contract tests
+        env:
+          MNSCLOUD_RUNTIME_KIT_LIB: ${{ github.workspace }}/.runtime-kit/lib
+        run: python3 -m unittest tests/test_reconcile_adapter.py -v
