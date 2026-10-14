@@ -218,6 +218,20 @@ fi
 [[ ! -e "${WORK}/root/current/tampered" ]] || fail "tampered artifact activated"
 pass "checksum mismatch rejected"
 
+# --- per-app state and the read-only status inventory -----------------------------------------
+grep -q '"lastSyncStatus":"failed"' "${WORK}/root/state/tampered.json" || fail "failed install not recorded"
+grep -q '"lastSyncStatus":"ok"' "${WORK}/root/state/website.json" || fail "ok install not recorded"
+grep -q '"resolvedRef":"v2.0.0"' "${WORK}/root/state/website.json" || fail "resolved ref not recorded"
+status_json="$(bash "${ROOT_DIR}/scripts/status-webapps.sh" --env "$ENV" --json)"
+python3 - "$status_json" <<'PY' || fail "status-webapps.sh --json"
+import json, sys
+apps = {item["app"]: item for item in json.loads(sys.argv[1])}
+assert apps["website"]["installedVersion"] == "v2.0.0" and apps["website"]["lastSyncStatus"] == "ok", apps["website"]
+assert apps["phoneweb"]["basePath"] == "/phoneweb/" and apps["phoneweb"]["ref"] == "v1.0.0", apps["phoneweb"]
+assert "tampered" not in apps, "disabled apps must not be listed"
+PY
+pass "per-app state recorded and status-webapps.sh --json reports installed/resolved/last sync"
+
 # --- sync moves the pinned app forward after APP_REF=latest, prune + rollback ----------------
 sed -i 's/^APP_REF=.*/APP_REF=latest/' "${WORK}/etc/apps.d/phoneweb.env"
 sleep 1
