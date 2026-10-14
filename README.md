@@ -151,6 +151,19 @@ disabled, or pin `APP_REF` to tags, where promotions must stay manual.
 
 All mutating scripts share a lock, so the timer never overlaps an Agent update or a rollback.
 
+## App status inventory
+
+Every install/sync of an app (`build-app.sh`, called by `update-webapps.sh` and the sync timer)
+records its outcome in `${WEBAPPS_ROOT}/state/<app>.json`: configured `ref`, the release it
+resolved (`resolvedRef`), the installed release, `lastSyncStatus` (`ok`/`failed`), `lastSyncAt`
+and a one-line `lastError`. `scripts/status-webapps.sh --json` reads them for the enabled apps
+without taking the lock or changing anything; `mnscloud-agent` reports that array to the control
+plane so each app's version and sync health are visible per host.
+
+```bash
+sudo ./scripts/status-webapps.sh --env /etc/mnscloud/webapps/webapps.env
+```
+
 ## Validate
 
 ```bash

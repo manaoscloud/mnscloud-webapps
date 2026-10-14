@@ -5,7 +5,11 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DEFAULT_ENV_FILE="/etc/mnscloud/webapps/webapps.env"
 
 log() { printf '[mnscloud-webapps] %s\n' "$*"; }
-die() { printf '[mnscloud-webapps] ERROR: %s\n' "$*" >&2; exit 1; }
+die() {
+  WEBAPPS_LAST_ERROR="$*"
+  printf '[mnscloud-webapps] ERROR: %s\n' "$*" >&2
+  exit 1
+}
 require_root() { [[ "${EUID}" -eq 0 ]] || die "this command must run as root"; }
 
 detect_os() {
@@ -497,6 +501,44 @@ resolve_app_release_tag() {
   [[ "$tag" =~ ^v[0-9]+[.][0-9]+[.][0-9]+([-+][0-9A-Za-z.-]+)?$ ]] ||
     die "cannot resolve the latest release of ${APP_RELEASE_REPOSITORY} (got: ${location:-empty})"
   printf '%s\n' "$tag"
+}
+
+json_string() {
+  local value="${1:-}"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  value="${value//$'\n'/ }"
+  value="${value//$'\r'/ }"
+  value="${value//$'\t'/ }"
+  printf '"%s"' "$value"
+}
+
+app_state_file() { printf '%s/state/%s.json' "$WEBAPPS_ROOT" "$1"; }
+
+# Records the outcome of the last install/sync of APP_NAME for status-webapps.sh (and the Agent
+# inventory). Never contains secrets: only names, refs, versions, timestamps and the error line.
+write_app_state() {
+  local exit_code="$1" resolved="${2:-}" state_file tmp status error=""
+  state_file="$(app_state_file "$APP_NAME")"
+  install -d -m 0755 "$(dirname "$state_file")"
+  status="ok"
+  if [[ "$exit_code" != "0" ]]; then
+    status="failed"
+    # Plain one-line message: no quotes/backslashes, so status-webapps.sh can read it back simply.
+    error="${WEBAPPS_LAST_ERROR:-exit code ${exit_code}}"
+    error="${error//\"/\'}"
+    error="${error//\\/}"
+    error="${error:0:500}"
+  fi
+  tmp="$(mktemp "${state_file}.XXXXXX")"
+  printf '{"app":%s,"source":%s,"ref":%s,"resolvedRef":%s,"installedVersion":%s,"lastSyncStatus":%s,"lastSyncAt":%s,"lastError":%s}\n' \
+    "$(json_string "$APP_NAME")" "$(json_string "$APP_SOURCE")" "$(json_string "$APP_REF")" \
+    "$(json_string "$resolved")" "$(json_string "$(current_app_release || true)")" \
+    "$(json_string "$status")" "$(json_string "$(date -u +%Y-%m-%dT%H:%M:%SZ)")" \
+    "$(json_string "$error")" \
+    >"$tmp"
+  chmod 0644 "$tmp"
+  mv -f "$tmp" "$state_file"
 }
 
 current_app_release() {

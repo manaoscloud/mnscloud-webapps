@@ -42,6 +42,10 @@ if [[ -n "$REF_OVERRIDE" ]]; then
 fi
 install -d -m 0755 "$APP_RELEASES_DIR" "$(dirname "$APP_CURRENT_LINK")"
 
+resolved_ref=""
+record_app_state() { write_app_state "$1" "$resolved_ref" || true; }
+trap 'record_app_state "$?"' EXIT
+
 nginx_config_digest() {
   # An empty include directory (e.g. no nginx/servers/*.conf) leaves the glob unmatched and makes
   # cat fail; under pipefail that aborted every release sync, so missing files are not an error.
@@ -53,6 +57,7 @@ nginx_config_digest() {
 if [[ "$APP_SOURCE" == "release" ]]; then
   ensure_release_tools
   tag="$(resolve_app_release_tag)"
+  resolved_ref="$tag"
 
   if [[ "$(current_app_release || true)" == "$tag" && -f "${APP_CURRENT_LINK}/index.html" ]]; then
     before="$(nginx_config_digest)"
@@ -91,6 +96,7 @@ fi
 chown -R "$WEBAPPS_USER:$WEBAPPS_GROUP" "$APP_REPO_DIR" "$APP_RELEASES_DIR"
 
 cd "$APP_REPO_DIR"
+resolved_ref="$APP_REF"
 run_as_webapps_user git fetch --all --tags --prune
 run_as_webapps_user git checkout "$APP_REF"
 run_as_webapps_user git pull --ff-only origin "$APP_REF" 2>/dev/null || true
