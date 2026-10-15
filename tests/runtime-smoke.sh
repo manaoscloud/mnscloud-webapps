@@ -251,6 +251,29 @@ bash "${ROOT_DIR}/scripts/build-app.sh" --env "$ENV" --app phoneweb >/dev/null
 [[ "$(curl -fsS "${base}/phoneweb/")" == *phoneweb-* ]] || fail "reinstall after deactivate"
 pass "deactivate-webapp.sh stops serving and keeps releases; reinstall serves again"
 
+# --- catalog SHA-256 pin: wrong digest rejected (nothing changes), right digest installs ---------
+v1_sha="$(sha256sum "${WORK}/gh/demo/mnscloud-phoneweb/releases/download/v1.0.0/mnscloud-phoneweb-web-v1.0.0.tar.gz" | awk '{ print $1 }')"
+bad_sha="$(printf '%064d' 1)"
+bash "${ROOT_DIR}/scripts/build-app.sh" --env "$ENV" --app phoneweb --ref v1.1.0 >/dev/null
+before="$(readlink "${WORK}/root/current/phoneweb")"
+if bash "${ROOT_DIR}/scripts/update-webapps.sh" --env "$ENV" --app phoneweb --app-ref v1.0.0 --app-sha256 "$bad_sha" >/dev/null 2>&1; then
+  fail "catalog digest mismatch was accepted"
+fi
+[[ "$(readlink "${WORK}/root/current/phoneweb")" == "$before" ]] || fail "catalog mismatch changed the active release"
+[[ ! -d "${WORK}/root/releases/phoneweb/v1.0.0" ]] || fail "mismatching cached release must be discarded"
+if bash "${ROOT_DIR}/scripts/update-webapps.sh" --env "$ENV" --app phoneweb --app-sha256 "$v1_sha" >/dev/null 2>&1; then
+  fail "--app-sha256 without --app-ref was accepted"
+fi
+bash "${ROOT_DIR}/scripts/update-webapps.sh" --env "$ENV" --app phoneweb --app-ref v1.0.0 --app-sha256 "$v1_sha" >/dev/null
+[[ "$(curl -fsS "${base}/phoneweb/")" == *phoneweb-one* ]] || fail "catalog-pinned v1.0.0 not served"
+if bash "${ROOT_DIR}/scripts/build-app.sh" --env "$ENV" --app phoneweb --ref v1.0.0 --sha256 "$bad_sha" >/dev/null 2>&1; then
+  fail "active release with a different catalog digest was accepted"
+fi
+[[ "$(curl -fsS "${base}/phoneweb/")" == *phoneweb-one* ]] || fail "active release changed after digest mismatch"
+out="$(bash "${ROOT_DIR}/scripts/build-app.sh" --env "$ENV" --app phoneweb --ref v1.0.0 --sha256 "$v1_sha" 2>&1)"
+[[ "$out" == *"already active"* ]] || fail "matching catalog digest should be a no-op: $out"
+pass "catalog SHA-256 pin rejects mismatches without side effects and installs the catalog artifact"
+
 bash "${ROOT_DIR}/scripts/validate-webapps.sh" --env "$ENV" >/dev/null || fail "validate-webapps.sh"
 pass "validate-webapps.sh passes for all enabled apps"
 

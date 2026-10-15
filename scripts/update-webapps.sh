@@ -7,7 +7,7 @@ source "${SCRIPT_DIR}/lib/common.sh"
 
 usage() {
   cat <<EOF
-Usage: scripts/update-webapps.sh [--app <name>] [--ref <runtime-git-ref>] [--app-ref <app-git-ref>] [--env /etc/mnscloud/webapps/webapps.env]
+Usage: scripts/update-webapps.sh [--app <name>] [--ref <runtime-git-ref>] [--app-ref <app-git-ref>] [--app-sha256 <hex>] [--env /etc/mnscloud/webapps/webapps.env]
 EOF
 }
 
@@ -15,17 +15,22 @@ ENV_FILE="$DEFAULT_ENV_FILE"
 APP=""
 RUNTIME_REF=""
 APP_REF_ARGS=()
+APP_SHA256_ARGS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --app) APP="${2:-}"; shift 2 ;;
     --ref) RUNTIME_REF="${2:-}"; shift 2 ;;
     --app-ref) APP_REF_ARGS=(--ref "${2:-}"); shift 2 ;;
+    --app-sha256) APP_SHA256_ARGS=(--sha256 "${2:-}"); shift 2 ;;
     --env) ENV_FILE="${2:-}"; shift 2 ;;
     --help|-h) usage; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
 done
 
+if [[ "${#APP_SHA256_ARGS[@]}" -gt 0 ]]; then
+  [[ -n "$APP" && "${#APP_REF_ARGS[@]}" -gt 0 ]] || die "--app-sha256 requires --app and --app-ref"
+fi
 require_root
 acquire_webapps_lock
 if [[ -n "$RUNTIME_REF" ]]; then
@@ -43,7 +48,7 @@ render_runtime_units
 render_runtime_nginx
 
 if [[ -n "$APP" ]]; then
-  "${SCRIPT_DIR}/build-app.sh" --env "$ENV_FILE" --app "$APP" "${APP_REF_ARGS[@]}"
+  "${SCRIPT_DIR}/build-app.sh" --env "$ENV_FILE" --app "$APP" "${APP_REF_ARGS[@]}" "${APP_SHA256_ARGS[@]}"
 else
   mapfile -t apps < <(enabled_apps)
   [[ "${#apps[@]}" -gt 0 ]] || die "WEBAPPS_ENABLED_APPS is empty and --app was not supplied"
