@@ -7,21 +7,25 @@ source "${SCRIPT_DIR}/lib/common.sh"
 
 usage() {
   cat <<EOF
-Usage: scripts/build-app.sh --app <name> [--ref <git-ref|release-tag>] [--env /etc/mnscloud/webapps/webapps.env]
+Usage: scripts/build-app.sh --app <name> [--ref <git-ref|release-tag>] [--sha256 <hex>] [--env /etc/mnscloud/webapps/webapps.env]
 
 Installs one app according to its apps.d/<app>.env:
   APP_SOURCE=release  download the verified prebuilt artifact of release APP_REF (tag or "latest")
   APP_SOURCE=build    clone APP_REPO_URL at APP_REF and build it with Flutter on this host
+
+--sha256 pins the release artifact to the control-plane catalog digest; it requires --ref <tag>.
 EOF
 }
 
 ENV_FILE="$DEFAULT_ENV_FILE"
 APP=""
 REF_OVERRIDE=""
+APP_PINNED_SHA256=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --app) APP="${2:-}"; shift 2 ;;
     --ref) REF_OVERRIDE="${2:-}"; shift 2 ;;
+    --sha256) APP_PINNED_SHA256="${2:-}"; shift 2 ;;
     --env) ENV_FILE="${2:-}"; shift 2 ;;
     --help|-h) usage; exit 0 ;;
     *) die "unknown argument: $1" ;;
@@ -39,6 +43,11 @@ if [[ -n "$REF_OVERRIDE" ]]; then
   [[ "$APP_SOURCE" != "release" || "$APP_REF" == "latest" ||
     "$APP_REF" =~ ^v[0-9]+[.][0-9]+[.][0-9]+([-+][0-9A-Za-z.-]+)?$ ]] ||
     die "--ref must be 'latest' or a release tag for ${APP_NAME} (APP_SOURCE=release)"
+fi
+if [[ -n "$APP_PINNED_SHA256" ]]; then
+  [[ "$APP_PINNED_SHA256" =~ ^[0-9a-f]{64}$ ]] || die "--sha256 must be 64 lowercase hex characters"
+  [[ "$APP_SOURCE" == "release" && "$APP_REF" != "latest" && -n "$REF_OVERRIDE" ]] ||
+    die "--sha256 requires --ref <release-tag> and APP_SOURCE=release for ${APP_NAME}"
 fi
 install -d -m 0755 "$APP_RELEASES_DIR" "$(dirname "$APP_CURRENT_LINK")"
 
@@ -59,6 +68,10 @@ if [[ "$APP_SOURCE" == "release" ]]; then
   tag="$(resolve_app_release_tag)"
   resolved_ref="$tag"
 
+  if [[ -n "$APP_PINNED_SHA256" && "$(current_app_release || true)" == "$tag" &&
+    "$(app_release_recorded_sha256 "$tag")" != "$APP_PINNED_SHA256" ]]; then
+    die "${APP_NAME} ${tag} is active but its installed artifact does not match the catalog SHA-256"
+  fi
   if [[ "$(current_app_release || true)" == "$tag" && -f "${APP_CURRENT_LINK}/index.html" ]]; then
     before="$(nginx_config_digest)"
     render_app_nginx "$APP_NAME"

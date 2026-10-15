@@ -547,8 +547,14 @@ current_app_release() {
   [[ -n "$target" ]] && basename "$target"
 }
 
+# SHA-256 recorded when release <tag> of the current app was installed (empty when unknown).
+app_release_recorded_sha256() {
+  sed -n 's/.*"sha256":"\([0-9a-f]\{64\}\)".*/\1/p' "${APP_RELEASES_DIR}/${1}.json" 2>/dev/null | head -n 1
+}
+
 # Downloads <prefix><version>.tar.gz and its .sha256 sidecar from GitHub release <tag>, verifies
-# the checksum, rejects unsafe archive paths and extracts it into releases/<app>/<tag>.
+# the checksum (and APP_PINNED_SHA256, the control-plane catalog digest, when set), rejects unsafe
+# archive paths and extracts it into releases/<app>/<tag>.
 install_app_release_artifact() {
   local tag="$1"
   local version="${tag#v}"
@@ -557,8 +563,12 @@ install_app_release_artifact() {
   local target="${APP_RELEASES_DIR}/${tag}"
 
   if [[ -f "${target}/index.html" && -f "${APP_RELEASES_DIR}/${tag}.json" ]]; then
-    log "${APP_NAME} ${tag} already downloaded"
-    return 0
+    if [[ -z "${APP_PINNED_SHA256:-}" || "$(app_release_recorded_sha256 "$tag")" == "$APP_PINNED_SHA256" ]]; then
+      log "${APP_NAME} ${tag} already downloaded"
+      return 0
+    fi
+    log "${APP_NAME} ${tag} cached artifact does not match the catalog SHA-256; downloading again"
+    rm -rf "$target" "${APP_RELEASES_DIR}/${tag}.json"
   fi
 
   local work expected actual
@@ -575,6 +585,10 @@ install_app_release_artifact() {
   if [[ ! "$expected" =~ ^[0-9a-f]{64}$ || "$actual" != "$expected" ]]; then
     rm -rf "$work"
     die "checksum verification failed for ${asset}: expected ${expected:-invalid}, got ${actual}"
+  fi
+  if [[ -n "${APP_PINNED_SHA256:-}" && "$actual" != "$APP_PINNED_SHA256" ]]; then
+    rm -rf "$work"
+    die "catalog checksum mismatch for ${asset}: catalog ${APP_PINNED_SHA256}, got ${actual}"
   fi
   if tar -tzf "${work}/${asset}" | grep -Eq '(^/|(^|/)[.][.](/|$))'; then
     rm -rf "$work"

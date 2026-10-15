@@ -164,6 +164,13 @@ sudo ./scripts/update-webapps.sh --env /etc/mnscloud/webapps/webapps.env --app p
 sudo ./scripts/update-webapps.sh --env /etc/mnscloud/webapps/webapps.env --app pulse --app-ref v1.0.2
 ```
 
+Single-app jobs for web clients versioned in the control-plane catalog (`mnscloud-phoneweb`,
+`mnscloud-pulse`, `mnscloud-customer-portal`, `mnscloud-website`) also carry the catalog
+`artifactSha256`; the Agent passes it as `--app-sha256` and the install is refused unless the
+downloaded artifact matches it, in addition to the release `.sha256` sidecar. A pinned digest
+requires `--app` and an explicit `--app-ref` tag, and an already active release whose recorded
+digest differs is never re-activated.
+
 `update-latest-webapps.sh` resolves the approved runtime release from the control-plane registry
 when `WEBAPPS_RELEASE_API_BASE_URL` (or `--api-base`) is set and otherwise uses the latest Git tag.
 
