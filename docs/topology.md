@@ -31,8 +31,12 @@ Activating a release tag `vX.Y.Z` (install, sync, update or rollback) writes `bu
 root of that release, served under the app's base path (for example `/phoneweb/build.json`):
 
 ```json
-{"product":"mnscloud-phoneweb","app":"phoneweb","version":"0.1.58","ref":"v0.1.58"}
+{"product":"mnscloud-phoneweb","app":"phoneweb","version":"0.1.58","ref":"v0.1.58","minimumVersion":null}
 ```
+
+`minimumVersion` comes from `update-policy.json` at the root of the release bundle, declared by the
+client repository for a critical fix; tabs running a lower version get a notice they cannot
+postpone. It is `null` when the bundle has no policy or the value is not a version.
 
 Open browser tabs poll it (with `cache: no-store`) and compare `version` with the version compiled
 into their bundle to show a "new version available" notice without a page refresh. It holds no
