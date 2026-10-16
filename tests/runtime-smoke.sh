@@ -177,7 +177,10 @@ body="$(curl -fsS "${base}/phoneweb/")"
 [[ "$(curl -s -o /dev/null -w '%{http_code}' "${base}/phoneweb")" == "301" ]] || fail "no-slash redirect"
 curl -fsSI "${base}/phoneweb/assets/app.js" | grep -qi '^cache-control: no-cache' || fail "no-cache header"
 [[ -f "${WORK}/root/releases/phoneweb/v1.0.0.json" ]] || fail "release record missing"
-pass "pinned release installed, verified, base href rewritten, SPA fallback, cache headers"
+build_json="$(curl -fsS "${base}/phoneweb/build.json")"
+[[ "$build_json" == '{"product":"mnscloud-phoneweb","app":"phoneweb","version":"1.0.0","ref":"v1.0.0"}' ]] ||
+  fail "build.json: $build_json"
+pass "pinned release installed, verified, base href rewritten, SPA fallback, cache headers, build.json"
 
 # --- root app (any domain) with "latest", next to the path-based app ----------------------------
 bash "${ROOT_DIR}/scripts/build-app.sh" --env "$ENV" --app website >/dev/null
@@ -240,7 +243,12 @@ bash "${ROOT_DIR}/scripts/sync-webapps.sh" --env "$ENV" >/dev/null
 [[ -d "${WORK}/root/releases/phoneweb/v1.0.0" ]] || fail "previous release must be kept (active + KEEP=1)"
 bash "${ROOT_DIR}/scripts/rollback-webapps.sh" --env "$ENV" --app phoneweb >/dev/null
 [[ "$(curl -fsS "${base}/phoneweb/")" == *phoneweb-one* ]] || fail "rollback did not restore v1.0.0"
-pass "sync installs latest, rollback restores the previous release"
+[[ "$(curl -fsS "${base}/phoneweb/build.json")" == *'"version":"1.0.0"'* ]] || fail "build.json after rollback"
+rm -f "${WORK}/root/releases/website/v2.0.0/build.json"
+bash "${ROOT_DIR}/scripts/build-app.sh" --env "$ENV" --app website >/dev/null
+[[ "$(curl -fsS -H 'Host: any.test' "${base}/build.json")" == *'"product":"mnscloud-website"'* ]] ||
+  fail "build.json not backfilled for an already active release"
+pass "sync installs latest, rollback restores the previous release, build.json follows and is backfilled"
 
 # --- deactivate stops serving an app but keeps its releases; reinstall serves it again -------
 bash "${ROOT_DIR}/scripts/deactivate-webapp.sh" --env "$ENV" --app phoneweb >/dev/null

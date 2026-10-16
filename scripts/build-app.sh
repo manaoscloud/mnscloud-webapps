@@ -73,6 +73,9 @@ if [[ "$APP_SOURCE" == "release" ]]; then
     die "${APP_NAME} ${tag} is active but its installed artifact does not match the catalog SHA-256"
   fi
   if [[ "$(current_app_release || true)" == "$tag" && -f "${APP_CURRENT_LINK}/index.html" ]]; then
+    # Releases activated before build.json existed get it on the next sync.
+    [[ -f "${APP_CURRENT_LINK}/build.json" ]] ||
+      write_app_build_metadata "${APP_RELEASES_DIR}/${tag}"
     before="$(nginx_config_digest)"
     render_app_nginx "$APP_NAME"
     render_runtime_nginx

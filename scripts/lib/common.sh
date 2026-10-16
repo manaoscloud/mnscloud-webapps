@@ -618,8 +618,26 @@ apply_app_base_href() {
   sed -i "s|<base href=\"/\">|<base href=\"${APP_BASE_PATH}\">|" "$index"
 }
 
+# Writes <release>/build.json so open browser tabs can detect that a newer release went live
+# (clients compare it with the version compiled into their bundle). Only release tags vX.Y.Z have
+# a version; git-source builds (timestamp ids) are skipped. The runtime's copy is authoritative.
+write_app_build_metadata() {
+  local release_dir="$1" tag product tmp
+  tag="$(basename "$release_dir")"
+  [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]] || return 0
+  product="${APP_RELEASE_REPOSITORY##*/}"
+  [[ -n "$product" ]] || return 0
+  tmp="$(mktemp "${release_dir}/.build.json.XXXXXX")"
+  printf '{"product":%s,"app":%s,"version":%s,"ref":%s}\n' \
+    "$(json_string "$product")" "$(json_string "$APP_NAME")" "$(json_string "${tag#v}")" \
+    "$(json_string "$tag")" >"$tmp"
+  chmod 0644 "$tmp"
+  mv -f "$tmp" "${release_dir}/build.json"
+}
+
 activate_app_release() {
   local release_dir="$1"
+  write_app_build_metadata "$release_dir"
   ln -sfn "$release_dir" "${APP_CURRENT_LINK}.next"
   mv -T "${APP_CURRENT_LINK}.next" "$APP_CURRENT_LINK"
   render_app_nginx "$APP_NAME"
