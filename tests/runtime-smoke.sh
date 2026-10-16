@@ -62,6 +62,7 @@ make_release() {
     printf 'about %s\n' "$marker" > "$src/about/index.html"
   fi
   printf 'console.log("%s")\n' "$marker" > "$src/assets/app.js"
+  [[ "$tag" == "v1.1.0" ]] && printf '{ "minimumVersion": "1.1.0" }\n' > "$src/update-policy.json"
   tar -C "$src" -czf "${out}/${name}" .
   if [[ "$tamper" == "1" ]]; then
     printf '%064d  %s\n' 0 "$name" > "${out}/${name}.sha256"
@@ -178,7 +179,7 @@ body="$(curl -fsS "${base}/phoneweb/")"
 curl -fsSI "${base}/phoneweb/assets/app.js" | grep -qi '^cache-control: no-cache' || fail "no-cache header"
 [[ -f "${WORK}/root/releases/phoneweb/v1.0.0.json" ]] || fail "release record missing"
 build_json="$(curl -fsS "${base}/phoneweb/build.json")"
-[[ "$build_json" == '{"product":"mnscloud-phoneweb","app":"phoneweb","version":"1.0.0","ref":"v1.0.0"}' ]] ||
+[[ "$build_json" == '{"product":"mnscloud-phoneweb","app":"phoneweb","version":"1.0.0","ref":"v1.0.0","minimumVersion":null}' ]] ||
   fail "build.json: $build_json"
 pass "pinned release installed, verified, base href rewritten, SPA fallback, cache headers, build.json"
 
@@ -240,6 +241,8 @@ sed -i 's/^APP_REF=.*/APP_REF=latest/' "${WORK}/etc/apps.d/phoneweb.env"
 sleep 1
 bash "${ROOT_DIR}/scripts/sync-webapps.sh" --env "$ENV" >/dev/null
 [[ "$(curl -fsS "${base}/phoneweb/")" == *phoneweb-two* ]] || fail "sync did not install v1.1.0"
+[[ "$(curl -fsS "${base}/phoneweb/build.json")" == *'"minimumVersion":"1.1.0"'* ]] ||
+  fail "build.json must carry the release update-policy minimumVersion"
 [[ -d "${WORK}/root/releases/phoneweb/v1.0.0" ]] || fail "previous release must be kept (active + KEEP=1)"
 bash "${ROOT_DIR}/scripts/rollback-webapps.sh" --env "$ENV" --app phoneweb >/dev/null
 [[ "$(curl -fsS "${base}/phoneweb/")" == *phoneweb-one* ]] || fail "rollback did not restore v1.0.0"

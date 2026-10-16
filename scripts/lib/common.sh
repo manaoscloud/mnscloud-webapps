@@ -627,10 +627,17 @@ write_app_build_metadata() {
   [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]] || return 0
   product="${APP_RELEASE_REPOSITORY##*/}"
   [[ -n "$product" ]] || return 0
+  # Critical updates: the client repository declares minimumVersion in update-policy.json
+  # (shipped at the bundle root); open tabs below it get a notice they cannot postpone.
+  local minimum="" minimum_json="null"
+  [[ -r "${release_dir}/update-policy.json" ]] &&
+    minimum="$(sed -n 's/.*"minimumVersion"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+      "${release_dir}/update-policy.json" | head -n 1)"
+  [[ "$minimum" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]] && minimum_json="$(json_string "$minimum")"
   tmp="$(mktemp "${release_dir}/.build.json.XXXXXX")"
-  printf '{"product":%s,"app":%s,"version":%s,"ref":%s}\n' \
+  printf '{"product":%s,"app":%s,"version":%s,"ref":%s,"minimumVersion":%s}\n' \
     "$(json_string "$product")" "$(json_string "$APP_NAME")" "$(json_string "${tag#v}")" \
-    "$(json_string "$tag")" >"$tmp"
+    "$(json_string "$tag")" "$minimum_json" >"$tmp"
   chmod 0644 "$tmp"
   mv -f "$tmp" "${release_dir}/build.json"
 }
