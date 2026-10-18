@@ -9,6 +9,7 @@ public internet
        -> /            -> mnscloud-app
        -> /phoneweb/   -> mnscloud-webapps (path-based app)
        -> /pulse/      -> mnscloud-webapps (path-based app)
+       -> /pos/        -> mnscloud-webapps (path-based app, online-only POS)
        -> any website domain -> mnscloud-webapps (root app, answers any Host)
 ```
 
