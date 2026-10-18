@@ -3,6 +3,19 @@
 Use this repository for the runtime that installs and serves final static web bundles for small
 MNSCloud clients (PhoneWeb, Pulse, the public website, and future lightweight modules).
 
+## Operating model (read before changing hosts or clients)
+
+This runtime is not deployed like the API or App. Web clients (PhoneWeb, Pulse, POS, customer
+portal, website) are **apps of this runtime**, installed from their public GitHub Release bundles
+(`APP_SOURCE=release`: no build and no secret on the host). A client is public only when three layers
+agree: the app is enabled here (`WEBAPPS_ENABLED_APPS` + `apps.d/<app>.env`), the edge publishes its
+path (`mnscloud-nginx` `nginx.env`, resource `nginx.webapps`) and the ThemeDomain vhosts were
+re-rendered by the Agent. Move one client with a single-app job
+(`mnscloud-webapps:<app>[@vX.Y.Z]`); DEV auto-syncs `APP_REF=latest`, production changes only by an
+explicit single-app rollout carrying the catalog SHA-256. The listener accepts only the edge, so
+verify through the public domains by page title and `<base href>`. Workspace contract:
+`docs/webapps.md` in the MNSCloud workspace.
+
 ## Rules
 
 - Treat every app bundle as public browser code.
