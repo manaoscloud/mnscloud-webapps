@@ -236,6 +236,21 @@ next sync moves the app forward again.
 Rollback of the runtime itself is a runtime update to an older tag (`scripts/update-webapps.sh --ref
 vX.Y.Z`).
 
+## Hosted websites
+
+Tenant websites of the Website module are static snapshots, one per site, installed by the Agent job
+`website.site` (capability `mnscloud.webapps.site.v1`) and never built here:
+
+- `scripts/site-install.sh --site <32-hex> --version <v> --archive <file.tar.gz> --sha256 <hex> --host <fqdn>...`
+  verifies the SHA-256, rejects absolute, `..`, link and special entries and archives without
+  `index.html`, extracts to `sites/<site>/releases/<v>/`, swaps `sites/<site>/current` atomically and
+  renders one nginx `server` for the hosts (`/404.html`, `/en/404.html`, `/es/404.html`, immutable
+  `/_astro/`, no dotfiles). A configuration nginx rejects restores the previous release.
+- `scripts/site-remove.sh --site <32-hex>` stops serving the hosts and deletes the releases.
+- `WEBAPPS_SITE_FALLBACK_SERVER_NAMES` (default `*.mnscloud.website`) answers a neutral 404 for site
+  hosts without a snapshot, so they never fall back to the root app. Exact site hosts win over it.
+- `WEBAPPS_SITE_KEEP_RELEASES` (default `2`) releases kept per site, including the active one.
+
 ## Nginx Edge
 
 Expose path-based apps through `mnscloud-nginx`:
