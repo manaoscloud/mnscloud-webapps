@@ -42,4 +42,9 @@ http {
 
   # Host-based apps served at the root of their own domain (APP_SERVER_NAME).
   include {{WEBAPPS_ENV_DIR}}/nginx/servers/*.conf;
+
+  # Hosted tenant websites: one server per site (its hosts) and the neutral 404 for site hosts
+  # without an installed snapshot (WEBAPPS_SITE_FALLBACK_SERVER_NAMES).
+  include {{WEBAPPS_ENV_DIR}}/nginx/sites/*.conf;
+  include {{WEBAPPS_ENV_DIR}}/nginx/site-fallback.conf;
 }

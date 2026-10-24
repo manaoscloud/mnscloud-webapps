@@ -285,6 +285,69 @@ out="$(bash "${ROOT_DIR}/scripts/build-app.sh" --env "$ENV" --app phoneweb --ref
 [[ "$out" == *"already active"* ]] || fail "matching catalog digest should be a no-op: $out"
 pass "catalog SHA-256 pin rejects mismatches without side effects and installs the catalog artifact"
 
+# --- hosted tenant websites: verified snapshot per site, hosts, per-language 404, fallback -------
+make_site() {
+  local out="$1" marker="$2" extra="${3:-}"
+  local src="${WORK}/site-src/${marker}"
+  mkdir -p "$src/en" "$src/es" "$src/_astro"
+  printf '<!doctype html><title>%s</title>%s home\n' "$marker" "$marker" > "$src/index.html"
+  printf 'pt not found\n' > "$src/404.html"
+  printf '%s en home\n' "$marker" > "$src/en/index.html"
+  printf 'en not found\n' > "$src/en/404.html"
+  printf 'es not found\n' > "$src/es/404.html"
+  printf 'body{}\n' > "$src/_astro/site.1.css"
+  case "$extra" in
+    symlink) ln -s /etc/passwd "$src/leak" ;;
+    noindex) rm -f "$src/index.html" ;;
+  esac
+  tar -C "$src" -czf "$out" .
+}
+SITE_ID="0123456789abcdef0123456789abcdef"
+SITE_HOST="a1b2c3d4e5f6.dev.mnscloud.website"
+make_site "${WORK}/site-v1.tar.gz" site-one
+make_site "${WORK}/site-v2.tar.gz" site-two
+make_site "${WORK}/site-bad.tar.gz" site-bad symlink
+make_site "${WORK}/site-noindex.tar.gz" site-noindex noindex
+sha() { sha256sum "$1" | awk '{ print $1 }'; }
+site_install() {
+  bash "${ROOT_DIR}/scripts/site-install.sh" --env "$ENV" --site "$SITE_ID" --version "$1" \
+    --archive "$2" --sha256 "$3" --host "$SITE_HOST" --host www.customer-shop.test
+}
+[[ "$(curl -s -o /dev/null -w '%{http_code}' -H "Host: ${SITE_HOST}" "${base}/")" == "404" ]] || fail "site host without snapshot must be 404"
+[[ "$(curl -sS -H "Host: ${SITE_HOST}" "${base}/")" == *"Site not found"* ]] || fail "site fallback body"
+[[ "$(curl -fsS -H 'Host: any.test' "${base}/")" == *website-one* ]] || fail "root app beside the site fallback"
+if site_install v1 "${WORK}/site-v1.tar.gz" "$(printf '%064d' 7)" >/dev/null 2>&1; then fail "site checksum mismatch accepted"; fi
+if site_install v1 "${WORK}/site-bad.tar.gz" "$(sha "${WORK}/site-bad.tar.gz")" >/dev/null 2>&1; then fail "site archive with a symlink accepted"; fi
+if site_install v1 "${WORK}/site-noindex.tar.gz" "$(sha "${WORK}/site-noindex.tar.gz")" >/dev/null 2>&1; then fail "site archive without index.html accepted"; fi
+if bash "${ROOT_DIR}/scripts/site-install.sh" --env "$ENV" --site "$SITE_ID" --version v1 --archive "${WORK}/site-v1.tar.gz" \
+  --sha256 "$(sha "${WORK}/site-v1.tar.gz")" --host 'evil.test;include /etc/x' >/dev/null 2>&1; then fail "invalid site host accepted"; fi
+[[ ! -e "${WORK}/etc/nginx/sites/${SITE_ID}.conf" && ! -e "${WORK}/root/sites/${SITE_ID}/current" ]] || fail "rejected site installs must leave nothing served"
+site_install v1 "${WORK}/site-v1.tar.gz" "$(sha "${WORK}/site-v1.tar.gz")" >/dev/null
+for host in "$SITE_HOST" www.customer-shop.test; do
+  [[ "$(curl -fsS -H "Host: ${host}" "${base}/")" == *"site-one home"* ]] || fail "site home for ${host}"
+done
+[[ "$(curl -fsS -H "Host: ${SITE_HOST}" "${base}/en/")" == *"site-one en home"* ]] || fail "site /en/"
+[[ "$(curl -sS -H "Host: ${SITE_HOST}" "${base}/en/missing")" == *"en not found"* ]] || fail "site /en/ 404 page"
+[[ "$(curl -sS -H "Host: ${SITE_HOST}" "${base}/es/missing")" == *"es not found"* ]] || fail "site /es/ 404 page"
+[[ "$(curl -s -o /dev/null -w '%{http_code}' -H "Host: ${SITE_HOST}" "${base}/missing")" == "404" ]] || fail "site 404 status"
+[[ "$(curl -sS -H "Host: ${SITE_HOST}" "${base}/missing")" == *"pt not found"* ]] || fail "site root 404 page"
+curl -fsSI -H "Host: ${SITE_HOST}" "${base}/_astro/site.1.css" | grep -qi 'immutable' || fail "site immutable assets"
+[[ "$(curl -s -o /dev/null -w '%{http_code}' -H "Host: ${SITE_HOST}" "${base}/.env")" == "404" ]] || fail "site dotfiles blocked"
+[[ "$(curl -s -o /dev/null -w '%{http_code}' -H "Host: ${SITE_HOST}" "${base}/phoneweb/")" == "404" ]] || fail "site host must not serve path apps"
+[[ "$(curl -sS -H 'Host: other1234.dev.mnscloud.website' "${base}/")" == *"Site not found"* ]] || fail "another site host must hit the fallback"
+site_install v2 "${WORK}/site-v2.tar.gz" "$(sha "${WORK}/site-v2.tar.gz")" >/dev/null
+[[ "$(curl -fsS -H "Host: ${SITE_HOST}" "${base}/")" == *"site-two home"* ]] || fail "site v2 not served"
+[[ -d "${WORK}/root/sites/${SITE_ID}/releases/v1" ]] || fail "previous site release must be kept"
+site_install v3 "${WORK}/site-v1.tar.gz" "$(sha "${WORK}/site-v1.tar.gz")" >/dev/null
+[[ ! -d "${WORK}/root/sites/${SITE_ID}/releases/v1" && -d "${WORK}/root/sites/${SITE_ID}/releases/v2" ]] || fail "site releases not pruned to active + 1"
+grep -q '"version":"v3"' "${WORK}/root/sites/${SITE_ID}/state.json" || fail "site state not recorded"
+bash "${ROOT_DIR}/scripts/site-remove.sh" --env "$ENV" --site "$SITE_ID" >/dev/null
+[[ "$(curl -sS -H "Host: ${SITE_HOST}" "${base}/")" == *"Site not found"* ]] || fail "removed site still served"
+[[ "$(curl -sS -H 'Host: www.customer-shop.test' "${base}/")" == *website-one* ]] || fail "custom host returns to the root app after removal"
+[[ ! -e "${WORK}/root/sites/${SITE_ID}" ]] || fail "site releases not deleted"
+bash "${ROOT_DIR}/scripts/site-remove.sh" --env "$ENV" --site "$SITE_ID" >/dev/null || fail "removing a missing site must succeed"
+pass "hosted websites: verified snapshots, hosts, per-language 404, fallback, atomic swap, prune, removal"
+
 bash "${ROOT_DIR}/scripts/validate-webapps.sh" --env "$ENV" >/dev/null || fail "validate-webapps.sh"
 pass "validate-webapps.sh passes for all enabled apps"
 
