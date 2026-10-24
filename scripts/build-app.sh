@@ -58,7 +58,7 @@ trap 'record_app_state "$?"' EXIT
 nginx_config_digest() {
   # An empty include directory (e.g. no nginx/servers/*.conf) leaves the glob unmatched and makes
   # cat fail; under pipefail that aborted every release sync, so missing files are not an error.
-  { cat "${WEBAPPS_ENV_DIR}"/nginx/*.conf "${WEBAPPS_ENV_DIR}"/nginx/apps/*.conf \
+  { cat "${WEBAPPS_ENV_DIR}"/nginx/*.conf "${WEBAPPS_ENV_DIR}"/nginx/apps/*.conf "${WEBAPPS_ENV_DIR}"/nginx/apps-root/*.conf \
     "${WEBAPPS_ENV_DIR}"/nginx/servers/*.conf "${WEBAPPS_ROOT}/runtime/nginx.conf" 2>/dev/null || true; } |
     sha256sum | awk '{ print $1 }'
 }

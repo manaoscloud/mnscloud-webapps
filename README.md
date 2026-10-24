@@ -245,7 +245,10 @@ Tenant websites of the Website module are static snapshots, one per site, instal
   verifies the SHA-256, rejects absolute, `..`, link and special entries and archives without
   `index.html`, extracts to `sites/<site>/releases/<v>/`, swaps `sites/<site>/current` atomically and
   renders one nginx `server` for the hosts (`/404.html`, `/en/404.html`, `/es/404.html`, immutable
-  `/_astro/`, no dotfiles). A configuration nginx rejects restores the previous release.
+  `/_astro/`, no dotfiles). A configuration nginx rejects restores the previous release. The site
+  `server` also includes the path-based apps (`nginx/apps/*.conf`), so `/customer-portal/`, `/pos/`
+  and the other edge paths keep working on a custom domain that serves a site; the root app lives in
+  `nginx/apps-root/` (moved there automatically from older layouts) and only the default server uses it.
 - `scripts/site-remove.sh --site <32-hex>` stops serving the hosts and deletes the releases.
 - `WEBAPPS_SITE_FALLBACK_SERVER_NAMES` (default `*.mnscloud.website`) answers a neutral 404 for site
   hosts without a snapshot, so they never fall back to the root app. Exact site hosts win over it.
