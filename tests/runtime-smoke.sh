@@ -333,7 +333,8 @@ done
 [[ "$(curl -sS -H "Host: ${SITE_HOST}" "${base}/missing")" == *"pt not found"* ]] || fail "site root 404 page"
 curl -fsSI -H "Host: ${SITE_HOST}" "${base}/_astro/site.1.css" | grep -qi 'immutable' || fail "site immutable assets"
 [[ "$(curl -s -o /dev/null -w '%{http_code}' -H "Host: ${SITE_HOST}" "${base}/.env")" == "404" ]] || fail "site dotfiles blocked"
-[[ "$(curl -s -o /dev/null -w '%{http_code}' -H "Host: ${SITE_HOST}" "${base}/phoneweb/")" == "404" ]] || fail "site host must not serve path apps"
+[[ "$(curl -fsS -H "Host: www.customer-shop.test" "${base}/phoneweb/")" == *phoneweb-* ]] || fail "custom site host must keep the path apps"
+[[ -f "${WORK}/etc/nginx/apps-root/website.conf" && ! -e "${WORK}/etc/nginx/apps/website.conf" ]] || fail "root app conf must live in nginx/apps-root"
 [[ "$(curl -sS -H 'Host: other1234.dev.mnscloud.website' "${base}/")" == *"Site not found"* ]] || fail "another site host must hit the fallback"
 site_install v2 "${WORK}/site-v2.tar.gz" "$(sha "${WORK}/site-v2.tar.gz")" >/dev/null
 [[ "$(curl -fsS -H "Host: ${SITE_HOST}" "${base}/")" == *"site-two home"* ]] || fail "site v2 not served"
@@ -341,12 +342,16 @@ site_install v2 "${WORK}/site-v2.tar.gz" "$(sha "${WORK}/site-v2.tar.gz")" >/dev
 site_install v3 "${WORK}/site-v1.tar.gz" "$(sha "${WORK}/site-v1.tar.gz")" >/dev/null
 [[ ! -d "${WORK}/root/sites/${SITE_ID}/releases/v1" && -d "${WORK}/root/sites/${SITE_ID}/releases/v2" ]] || fail "site releases not pruned to active + 1"
 grep -q '"version":"v3"' "${WORK}/root/sites/${SITE_ID}/state.json" || fail "site state not recorded"
+# Runtimes rendered before nginx/apps-root kept the root app in nginx/apps/: the next render moves it.
+mv "${WORK}/etc/nginx/apps-root/website.conf" "${WORK}/etc/nginx/apps/website.conf"
+bash "${ROOT_DIR}/scripts/validate-webapps.sh" --env "$ENV" >/dev/null || fail "validate after the legacy root app layout"
+[[ -f "${WORK}/etc/nginx/apps-root/website.conf" && ! -e "${WORK}/etc/nginx/apps/website.conf" ]] || fail "legacy root app conf not moved"
 bash "${ROOT_DIR}/scripts/site-remove.sh" --env "$ENV" --site "$SITE_ID" >/dev/null
 [[ "$(curl -sS -H "Host: ${SITE_HOST}" "${base}/")" == *"Site not found"* ]] || fail "removed site still served"
 [[ "$(curl -sS -H 'Host: www.customer-shop.test' "${base}/")" == *website-one* ]] || fail "custom host returns to the root app after removal"
 [[ ! -e "${WORK}/root/sites/${SITE_ID}" ]] || fail "site releases not deleted"
 bash "${ROOT_DIR}/scripts/site-remove.sh" --env "$ENV" --site "$SITE_ID" >/dev/null || fail "removing a missing site must succeed"
-pass "hosted websites: verified snapshots, hosts, per-language 404, fallback, atomic swap, prune, removal"
+pass "hosted websites: verified snapshots, hosts, path apps on custom hosts, per-language 404, fallback, atomic swap, prune, removal"
 
 bash "${ROOT_DIR}/scripts/validate-webapps.sh" --env "$ENV" >/dev/null || fail "validate-webapps.sh"
 pass "validate-webapps.sh passes for all enabled apps"

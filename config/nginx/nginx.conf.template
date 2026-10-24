@@ -35,9 +35,10 @@ http {
       return 404;
     }
 
-    # Path-based apps (APP_BASE_PATH such as /phoneweb/) and at most one root app (APP_BASE_PATH=/),
-    # which answers any Host forwarded by the edge.
+    # Path-based apps (APP_BASE_PATH such as /phoneweb/; site servers include them too) and at most
+    # one root app (APP_BASE_PATH=/), which answers any Host forwarded by the edge.
     include {{WEBAPPS_ENV_DIR}}/nginx/apps/*.conf;
+    include {{WEBAPPS_ENV_DIR}}/nginx/apps-root/*.conf;
   }
 
   # Host-based apps served at the root of their own domain (APP_SERVER_NAME).

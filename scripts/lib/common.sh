@@ -312,7 +312,8 @@ render_access_rules() {
 
 render_runtime_nginx() {
   install -d -m 0755 "${WEBAPPS_ROOT}/runtime/logs" "${WEBAPPS_ENV_DIR}/nginx/apps" \
-    "${WEBAPPS_ENV_DIR}/nginx/servers" "${WEBAPPS_ENV_DIR}/nginx/sites"
+    "${WEBAPPS_ENV_DIR}/nginx/apps-root" "${WEBAPPS_ENV_DIR}/nginx/servers" "${WEBAPPS_ENV_DIR}/nginx/sites"
+  migrate_root_app_nginx
   render_access_rules
   render_site_fallback_nginx
   local template="${ROOT_DIR}/config/nginx/nginx.conf.template"
@@ -322,6 +323,16 @@ render_runtime_nginx() {
     -e "s|{{WEBAPPS_LISTEN_HOST}}|${WEBAPPS_LISTEN_HOST}|g" \
     -e "s|{{WEBAPPS_LISTEN_PORT}}|${WEBAPPS_LISTEN_PORT}|g" \
     "$template" > "${WEBAPPS_ROOT}/runtime/nginx.conf"
+}
+
+# Root apps used to share nginx/apps/ with the path-based apps; site servers now include nginx/apps/,
+# so a root app's "location /" there would collide with the site's own. Moves it to nginx/apps-root/.
+migrate_root_app_nginx() {
+  local conf
+  for conf in "${WEBAPPS_ENV_DIR}"/nginx/apps/*.conf; do
+    if [[ ! -f "$conf" ]] || ! grep -q '^location / {' "$conf"; then continue; fi
+    mv -f "$conf" "${WEBAPPS_ENV_DIR}/nginx/apps-root/$(basename "$conf")"
+  done
 }
 
 # Renders the try_files/error_page lines for APP_ROUTING relative to the app's base path.
@@ -337,8 +348,10 @@ app_routing_directives() {
 render_app_nginx() {
   local app="$1"
   load_app_env "$app"
-  install -d -m 0755 "${WEBAPPS_ENV_DIR}/nginx/apps" "${WEBAPPS_ENV_DIR}/nginx/servers"
+  install -d -m 0755 "${WEBAPPS_ENV_DIR}/nginx/apps" "${WEBAPPS_ENV_DIR}/nginx/apps-root" \
+    "${WEBAPPS_ENV_DIR}/nginx/servers"
   local path_conf="${WEBAPPS_ENV_DIR}/nginx/apps/${APP_NAME}.conf"
+  local root_conf="${WEBAPPS_ENV_DIR}/nginx/apps-root/${APP_NAME}.conf"
   local server_conf="${WEBAPPS_ENV_DIR}/nginx/servers/${APP_NAME}.conf"
   local app_root="${WEBAPPS_ROOT}/current/${APP_NAME}"
   local immutable immutable_locations=""
@@ -357,7 +370,7 @@ render_app_nginx() {
   done
 
   if [[ -n "$APP_SERVER_NAME" ]]; then
-    rm -f "$path_conf"
+    rm -f "$path_conf" "$root_conf"
     cat > "$server_conf" <<EOF
 server {
   listen ${WEBAPPS_LISTEN_HOST}:${WEBAPPS_LISTEN_PORT};
@@ -384,7 +397,8 @@ EOF
     # Root app of the default server: answers any Host the edge forwards (for example a website
     # deployed on whatever domain points here). Sub-path apps, /healthz and dotfile blocking keep
     # precedence because their locations are more specific.
-    cat > "$path_conf" <<EOF
+    rm -f "$path_conf"
+    cat > "$root_conf" <<EOF
 ${immutable_locations}
 location / {
   root ${app_root};
@@ -396,6 +410,7 @@ EOF
     return 0
   fi
 
+  rm -f "$root_conf"
   local no_slash="${APP_BASE_PATH%/}"
   cat > "$path_conf" <<EOF
 location = ${no_slash} {
@@ -751,7 +766,8 @@ seed_app_env_files() {
 deactivate_app() {
   local app="$1"
   load_app_env "$app"
-  rm -f "${WEBAPPS_ENV_DIR}/nginx/apps/${APP_NAME}.conf" "${WEBAPPS_ENV_DIR}/nginx/servers/${APP_NAME}.conf"
+  rm -f "${WEBAPPS_ENV_DIR}/nginx/apps/${APP_NAME}.conf" "${WEBAPPS_ENV_DIR}/nginx/apps-root/${APP_NAME}.conf" \
+    "${WEBAPPS_ENV_DIR}/nginx/servers/${APP_NAME}.conf"
   rm -f "$APP_CURRENT_LINK"
   render_runtime_nginx
   webapps_nginx -t
@@ -827,6 +843,9 @@ render_site_nginx() {
     printf '  root %s/current;\n' "$(site_dir "$site")"
     printf '  location = /healthz {\n    return 200 '"'"'ok'"'"';\n    add_header Content-Type text/plain;\n  }\n'
     printf '  location ~ (^|/)\\. {\n    return 404;\n  }\n'
+    # Path-based apps (/customer-portal/, /pos/, ...) keep working on a custom domain that serves
+    # a site: the edge forwards them with the same Host, so this server must answer them too.
+    printf '  include %s/nginx/apps/*.conf;\n' "$WEBAPPS_ENV_DIR"
     printf '  location ^~ /_astro/ {\n'
     printf '    add_header Cache-Control "public, max-age=31536000, immutable" always;\n'
     printf '    add_header X-Content-Type-Options "nosniff" always;\n'

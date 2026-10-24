@@ -65,7 +65,7 @@ install -d -m 0755 "$WEBAPPS_ROOT" \
   "$WEBAPPS_ROOT/current" \
   "$WEBAPPS_ROOT/runtime/logs" \
   "$WEBAPPS_ENV_DIR/apps.d" \
-  "$WEBAPPS_ENV_DIR/nginx/apps" \
+  "$WEBAPPS_ENV_DIR/nginx/apps" "$WEBAPPS_ENV_DIR/nginx/apps-root" \
   "$WEBAPPS_ENV_DIR/nginx/servers"
 
 seed_app_env_files
