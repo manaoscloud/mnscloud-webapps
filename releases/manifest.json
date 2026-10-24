@@ -3,9 +3,9 @@
   "repository": "manaoscloud/mnscloud-webapps",
   "channels": {
     "stable": {
-      "version": "0.1.21",
-      "ref": "v0.1.21",
-      "releasedAt": "2026-10-18T14:47:30Z",
+      "version": "0.1.22",
+      "ref": "v0.1.22",
+      "releasedAt": "2026-10-24T13:05:57Z",
       "minimumVersion": "0.1.0"
     }
   }
