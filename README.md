@@ -165,7 +165,7 @@ sudo ./scripts/update-webapps.sh --env /etc/mnscloud/webapps/webapps.env --app p
 ```
 
 Single-app jobs for web clients versioned in the control-plane catalog (`mnscloud-phoneweb`,
-`mnscloud-pulse`, `mnscloud-pos`, `mnscloud-customer-portal`, `mnscloud-website`) also carry the catalog
+`mnscloud-pulse`, `mnscloud-pos`, `mnscloud-infragis-mobile` (app `infragis-mobile` at `/infragis/`), `mnscloud-customer-portal`, `mnscloud-website`) also carry the catalog
 `artifactSha256`; the Agent passes it as `--app-sha256` and the install is refused unless the
 downloaded artifact matches it, in addition to the release `.sha256` sidecar. A pinned digest
 requires `--app` and an explicit `--app-ref` tag, and an already active release whose recorded
