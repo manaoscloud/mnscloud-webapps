@@ -76,6 +76,8 @@ if [[ "$APP_SOURCE" == "release" ]]; then
     # Releases activated before build.json existed get it on the next sync.
     [[ -f "${APP_CURRENT_LINK}/build.json" ]] ||
       write_app_build_metadata "${APP_RELEASES_DIR}/${tag}"
+    # An earlier activation of this release may have used another base path.
+    apply_app_base_href "${APP_RELEASES_DIR}/${tag}" && log "${APP_NAME} ${tag} base href set to ${APP_BASE_PATH}"
     before="$(nginx_config_digest)"
     render_app_nginx "$APP_NAME"
     render_runtime_nginx
@@ -91,7 +93,7 @@ if [[ "$APP_SOURCE" == "release" ]]; then
 
   install_app_release_artifact "$tag"
   release_dir="${APP_RELEASES_DIR}/${tag}"
-  apply_app_base_href "$release_dir"
+  apply_app_base_href "$release_dir" || true
   activate_app_release "$release_dir"
   prune_app_releases
   log "${APP_NAME} ${tag} active at ${APP_SERVER_NAME:-$APP_BASE_PATH}"

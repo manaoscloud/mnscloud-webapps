@@ -632,11 +632,16 @@ install_app_release_artifact() {
 }
 
 # Release artifacts are built with a portable root base href; point it at the hosting path.
+# Idempotent and path-change safe: whatever base href the installed index carries (the portable
+# "/" or the path of an earlier activation of the same release), it ends at APP_BASE_PATH.
+# Returns 0 when it changed the file.
 apply_app_base_href() {
   local index="$1/index.html"
-  [[ "$APP_BASE_PATH" == "/" ]] && return 0
-  grep -q '<base href="/">' "$index" || return 0
-  sed -i "s|<base href=\"/\">|<base href=\"${APP_BASE_PATH}\">|" "$index"
+  [[ -f "$index" ]] || return 1
+  grep -q '<base href="[^"]*">' "$index" || return 1
+  grep -qF "<base href=\"${APP_BASE_PATH}\">" "$index" && return 1
+  sed -i "0,/<base href=\"[^\"]*\">/s|<base href=\"[^\"]*\">|<base href=\"${APP_BASE_PATH}\">|" "$index"
+  return 0
 }
 
 # Writes <release>/build.json so open browser tabs can detect that a newer release went live
