@@ -43,9 +43,13 @@ load_runtime_env
 # and add env files for apps that this release ships.
 ensure_runtime_kit
 seed_app_env_files
-# Re-render units and the runtime config so runtime upgrades apply template changes.
+# Re-render units and the runtime config so runtime upgrades apply template changes. The apps below
+# reload nginx only for their own changes, so a changed runtime template reloads at the end.
+runtime_conf="${WEBAPPS_ROOT}/runtime/nginx.conf"
+runtime_before="$(sha256sum "$runtime_conf" 2>/dev/null | awk '{ print $1 }' || true)"
 render_runtime_units
 render_runtime_nginx
+runtime_after="$(sha256sum "$runtime_conf" | awk '{ print $1 }')"
 
 if [[ -n "$APP" ]]; then
   "${SCRIPT_DIR}/build-app.sh" --env "$ENV_FILE" --app "$APP" "${APP_REF_ARGS[@]}" "${APP_SHA256_ARGS[@]}"
@@ -55,4 +59,9 @@ else
   for app in "${apps[@]}"; do
     "${SCRIPT_DIR}/build-app.sh" --env "$ENV_FILE" --app "$app" "${APP_REF_ARGS[@]}"
   done
+fi
+
+if [[ "$runtime_before" != "$runtime_after" ]]; then
+  reload_webapps_runtime
+  log "runtime nginx configuration changed; reloaded"
 fi
