@@ -288,6 +288,18 @@ out="$(bash "${ROOT_DIR}/scripts/build-app.sh" --env "$ENV" --app phoneweb --ref
 [[ "$out" == *"already active"* ]] || fail "matching catalog digest should be a no-op: $out"
 pass "catalog SHA-256 pin rejects mismatches without side effects and installs the catalog artifact"
 
+# --- a runtime upgrade that only changes the nginx template reloads nginx ----------------------
+# The previous runtime is simulated by its live configuration without the ES module type.
+sed -i '/application\/javascript mjs;/d' "${WORK}/root/runtime/nginx.conf"
+nginx -p "${WORK}/root/runtime" -c "${WORK}/root/runtime/nginx.conf" -s reload
+sleep 1
+curl -fsSI "${base}/phoneweb/assets/worker.mjs" | grep -qi '^content-type: application/javascript' &&
+  fail "test setup: the previous configuration must not serve .mjs as JavaScript"
+bash "${ROOT_DIR}/scripts/update-webapps.sh" --env "$ENV" --app phoneweb --app-ref v1.0.0 --app-sha256 "$v1_sha" >/dev/null
+curl -fsSI "${base}/phoneweb/assets/worker.mjs" | grep -qi '^content-type: application/javascript' ||
+  fail "a runtime update whose nginx template changed must reload nginx"
+pass "a runtime update reloads nginx when only the runtime template changed"
+
 # --- hosted tenant websites: verified snapshot per site, hosts, per-language 404, fallback -------
 make_site() {
   local out="$1" marker="$2" extra="${3:-}"
