@@ -9,6 +9,11 @@ events {
 http {
   server_tokens off;
   include /etc/nginx/mime.types;
+  # ES modules (the MapLibre worker of the customer portal): browsers refuse a module worker or
+  # script served without a JavaScript type, and the responses carry `nosniff`.
+  types {
+    application/javascript mjs;
+  }
   default_type application/octet-stream;
   access_log {{WEBAPPS_ROOT}}/runtime/logs/access.log;
   sendfile on;

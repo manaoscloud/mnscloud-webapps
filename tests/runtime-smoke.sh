@@ -62,6 +62,7 @@ make_release() {
     printf 'about %s\n' "$marker" > "$src/about/index.html"
   fi
   printf 'console.log("%s")\n' "$marker" > "$src/assets/app.js"
+  printf 'export {};\n' > "$src/assets/worker.mjs"
   [[ "$tag" == "v1.1.0" ]] && printf '{ "minimumVersion": "1.1.0" }\n' > "$src/update-policy.json"
   tar -C "$src" -czf "${out}/${name}" .
   if [[ "$tamper" == "1" ]]; then
@@ -177,6 +178,8 @@ body="$(curl -fsS "${base}/phoneweb/")"
 [[ "$(curl -fsS "${base}/phoneweb/some/deep/route")" == *phoneweb-one* ]] || fail "SPA fallback"
 [[ "$(curl -s -o /dev/null -w '%{http_code}' "${base}/phoneweb")" == "301" ]] || fail "no-slash redirect"
 curl -fsSI "${base}/phoneweb/assets/app.js" | grep -qi '^cache-control: no-cache' || fail "no-cache header"
+curl -fsSI "${base}/phoneweb/assets/worker.mjs" | grep -qi '^content-type: application/javascript' ||
+  fail "ES modules (.mjs) must be served as JavaScript"
 [[ -f "${WORK}/root/releases/phoneweb/v1.0.0.json" ]] || fail "release record missing"
 build_json="$(curl -fsS "${base}/phoneweb/build.json")"
 [[ "$build_json" == '{"product":"mnscloud-phoneweb","app":"phoneweb","version":"1.0.0","ref":"v1.0.0","minimumVersion":null}' ]] ||
