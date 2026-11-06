@@ -18,6 +18,15 @@ http {
   access_log {{WEBAPPS_ROOT}}/runtime/logs/access.log;
   sendfile on;
   keepalive_timeout 30s;
+
+  # Text responses compressed for the browser (sites, web clients); the edge passes them through.
+  gzip on;
+  gzip_vary on;
+  gzip_proxied any;
+  gzip_comp_level 5;
+  gzip_min_length 512;
+  gzip_types text/css text/plain text/xml application/javascript application/json
+    application/manifest+json application/xml image/svg+xml;
   client_max_body_size 10m;
 
   # Client allowlist rendered from WEBAPPS_ALLOWED_CLIENTS (applies to every server below).
