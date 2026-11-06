@@ -59,6 +59,7 @@ make_release() {
     printf 'not found\n' > "$src/404.html"
     mkdir -p "$src/_astro" "$src/about"
     printf 'body{}\n' > "$src/_astro/app.123.css"
+    for _ in $(seq 1 200); do printf '.c{color:#123456}\n'; done >> "$src/_astro/app.123.css"
     printf 'about %s\n' "$marker" > "$src/about/index.html"
   fi
   printf 'console.log("%s")\n' "$marker" > "$src/assets/app.js"
@@ -196,6 +197,8 @@ done
 [[ "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: any.test' "${base}/missing")" == "404" ]] || fail "website 404"
 [[ "$(curl -sS -H 'Host: any.test' "${base}/missing")" == *"not found"* ]] || fail "website 404.html body"
 curl -fsSI -H 'Host: any.test' "${base}/_astro/app.123.css" | grep -qi 'immutable' || fail "immutable cache"
+curl -fsS -o /dev/null -D - -H 'Host: any.test' -H 'Accept-Encoding: gzip' "${base}/_astro/app.123.css" |
+  grep -qi '^content-encoding: gzip' || fail "gzip text assets"
 [[ "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: any.test' "${base}/.env")" == "404" ]] || fail "dotfile blocked"
 [[ "$(curl -fsS -H 'Host: any.test' "${base}/phoneweb/")" == *phoneweb-one* ]] || fail "path app beside root app"
 [[ "$(curl -fsS -H 'Host: any.test' "${base}/phoneweb/deep/route")" == *phoneweb-one* ]] || fail "SPA beside root app"
