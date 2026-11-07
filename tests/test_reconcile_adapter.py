@@ -184,6 +184,26 @@ class ServedRetryTests(unittest.TestCase):
         answers = iter([404] * 3)
         self.assertFalse(adapter.served('demo', attempts=3, delay=0))
 
+    def test_root_app_is_found_in_apps_root(self):
+        root = Path(tempfile.mkdtemp(prefix='.webapps-served-', dir=Path.home()))
+        self.addCleanup(shutil.rmtree, root)
+        (root / 'apps-root').mkdir()
+        (root / 'apps-root' / 'website.conf').write_text('')
+        (root / 'current').mkdir()
+        (root / 'current' / 'website').symlink_to(root)
+        patches = {'NGINX_DIR': str(root), 'WEBAPPS_ROOT': str(root),
+                   'app_settings': lambda app: {'APP_BASE_PATH': '/'},
+                   'listen_url': lambda: 'http://127.0.0.1:8080', 'http_status': lambda url, host=None: 200}
+        for name, value in patches.items():
+            original = getattr(adapter, name)
+            setattr(adapter, name, value)
+            self.addCleanup(setattr, adapter, name, original)
+        self.assertTrue(adapter.served('website', attempts=1, delay=0))
+        self.assertFalse(adapter.deactivated('website'))
+        (root / 'apps-root' / 'website.conf').unlink()
+        (root / 'current' / 'website').unlink()
+        self.assertTrue(adapter.deactivated('website'))
+
 
 if __name__ == '__main__':
     unittest.main()
