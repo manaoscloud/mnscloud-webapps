@@ -178,6 +178,9 @@ body="$(curl -fsS "${base}/phoneweb/")"
 [[ "$body" == *'<base href="/phoneweb/">'* ]] || fail "base href not rewritten to /phoneweb/"
 [[ "$(curl -fsS "${base}/phoneweb/some/deep/route")" == *phoneweb-one* ]] || fail "SPA fallback"
 [[ "$(curl -s -o /dev/null -w '%{http_code}' "${base}/phoneweb")" == "301" ]] || fail "no-slash redirect"
+[[ "$(curl -s -o /dev/null -w '%{redirect_url}' "${base}/phoneweb")" == "${base}/phoneweb/" &&
+  "$(curl -sI "${base}/phoneweb" | tr -d '\r' | sed -n 's/^[Ll]ocation: //p')" == "/phoneweb/" ]] ||
+  fail "no-slash redirect must be relative (no listener scheme or port)"
 curl -fsSI "${base}/phoneweb/assets/app.js" | grep -qi '^cache-control: no-cache' || fail "no-cache header"
 curl -fsSI "${base}/phoneweb/assets/worker.mjs" | grep -qi '^content-type: application/javascript' ||
   fail "ES modules (.mjs) must be served as JavaScript"

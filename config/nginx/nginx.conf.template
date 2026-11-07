@@ -28,6 +28,10 @@ http {
   gzip_types text/css text/plain text/xml application/javascript application/json
     application/manifest+json application/xml image/svg+xml;
   client_max_body_size 10m;
+  # Behind the edge the listener's own scheme and port are private: redirects (a directory without
+  # its trailing slash, `/security` -> `/security/`) stay relative so the browser keeps the public
+  # https origin instead of being sent to http://<host>:<listen port>/.
+  absolute_redirect off;
 
   # Client allowlist rendered from WEBAPPS_ALLOWED_CLIENTS (applies to every server below).
   include {{WEBAPPS_ENV_DIR}}/nginx/access.conf;
