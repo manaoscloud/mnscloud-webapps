@@ -182,7 +182,10 @@ def served(app, attempts=10, delay=2.0):
     settings = app_settings(app)
     base = settings.get('APP_BASE_PATH') or '/%s/' % app
     server_name = (settings.get('APP_SERVER_NAME') or '').split()
-    conf = os.path.join(NGINX_DIR, 'servers' if server_name else 'apps', app + '.conf')
+    # Host apps render in servers/, the root app (APP_BASE_PATH=/) in apps-root/ (common.sh), the
+    # path-based apps in apps/.
+    folder = 'servers' if server_name else ('apps-root' if base == '/' else 'apps')
+    conf = os.path.join(NGINX_DIR, folder, app + '.conf')
     if not os.path.isfile(conf) or not os.path.islink(os.path.join(WEBAPPS_ROOT, 'current', app)):
         return False
     path = '/' if server_name else base
@@ -197,6 +200,7 @@ def served(app, attempts=10, delay=2.0):
 def deactivated(app):
     return not any(os.path.exists(path) for path in (
         os.path.join(NGINX_DIR, 'apps', app + '.conf'),
+        os.path.join(NGINX_DIR, 'apps-root', app + '.conf'),
         os.path.join(NGINX_DIR, 'servers', app + '.conf'),
     )) and not os.path.lexists(os.path.join(WEBAPPS_ROOT, 'current', app))
 
