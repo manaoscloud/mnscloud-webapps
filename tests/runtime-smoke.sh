@@ -320,13 +320,16 @@ make_site() {
   case "$extra" in
     symlink) ln -s /etc/passwd "$src/leak" ;;
     noindex) rm -f "$src/index.html" ;;
+    csp) printf "default-src 'none'; script-src 'self'; style-src 'self'\n" > "$src/.mnscloud-site-csp" ;;
+    badcsp) printf 'default-src "x"; $host\n' > "$src/.mnscloud-site-csp" ;;
   esac
   tar -C "$src" -czf "$out" .
 }
 SITE_ID="0123456789abcdef0123456789abcdef"
 SITE_HOST="a1b2c3d4e5f6.dev.mnscloud.website"
 make_site "${WORK}/site-v1.tar.gz" site-one
-make_site "${WORK}/site-v2.tar.gz" site-two
+make_site "${WORK}/site-v2.tar.gz" site-two csp
+make_site "${WORK}/site-v4.tar.gz" site-four badcsp
 make_site "${WORK}/site-bad.tar.gz" site-bad symlink
 make_site "${WORK}/site-noindex.tar.gz" site-noindex noindex
 sha() { sha256sum "$1" | awk '{ print $1 }'; }
@@ -359,10 +362,18 @@ curl -fsSI -H "Host: ${SITE_HOST}" "${base}/_astro/site.1.css" | grep -qi 'immut
 [[ "$(curl -sS -H 'Host: other1234.dev.mnscloud.website' "${base}/")" == *"Site not found"* ]] || fail "another site host must hit the fallback"
 site_install v2 "${WORK}/site-v2.tar.gz" "$(sha "${WORK}/site-v2.tar.gz")" >/dev/null
 [[ "$(curl -fsS -H "Host: ${SITE_HOST}" "${base}/")" == *"site-two home"* ]] || fail "site v2 not served"
+for path in / /en/missing /_astro/site.1.css; do
+  curl -sSI -H "Host: ${SITE_HOST}" "${base}${path}" | grep -qi "^x-mnscloud-site-csp: default-src 'none'; script-src 'self'; style-src 'self'" ||
+    fail "site CSP of the snapshot not sent on ${path}"
+done
+[[ "$(curl -s -o /dev/null -w '%{http_code}' -H "Host: ${SITE_HOST}" "${base}/.mnscloud-site-csp")" == "404" ]] || fail "site CSP file must not be served"
 [[ -d "${WORK}/root/sites/${SITE_ID}/releases/v1" ]] || fail "previous site release must be kept"
 site_install v3 "${WORK}/site-v1.tar.gz" "$(sha "${WORK}/site-v1.tar.gz")" >/dev/null
 [[ ! -d "${WORK}/root/sites/${SITE_ID}/releases/v1" && -d "${WORK}/root/sites/${SITE_ID}/releases/v2" ]] || fail "site releases not pruned to active + 1"
 grep -q '"version":"v3"' "${WORK}/root/sites/${SITE_ID}/state.json" || fail "site state not recorded"
+curl -sSI -H "Host: ${SITE_HOST}" "${base}/" | grep -qi '^x-mnscloud-site-csp' && fail "a snapshot without CSP file must send no site CSP"
+site_install v4 "${WORK}/site-v4.tar.gz" "$(sha "${WORK}/site-v4.tar.gz")" >/dev/null 2>&1 || fail "a snapshot with an invalid CSP file must still install"
+curl -sSI -H "Host: ${SITE_HOST}" "${base}/" | grep -qi '^x-mnscloud-site-csp' && fail "an invalid site CSP must not be sent"
 # Runtimes rendered before nginx/apps-root kept the root app in nginx/apps/: the next render moves it.
 mv "${WORK}/etc/nginx/apps-root/website.conf" "${WORK}/etc/nginx/apps/website.conf"
 bash "${ROOT_DIR}/scripts/validate-webapps.sh" --env "$ENV" >/dev/null || fail "validate after the legacy root app layout"
@@ -372,7 +383,7 @@ bash "${ROOT_DIR}/scripts/site-remove.sh" --env "$ENV" --site "$SITE_ID" >/dev/n
 [[ "$(curl -sS -H 'Host: www.customer-shop.test' "${base}/")" == *website-one* ]] || fail "custom host returns to the root app after removal"
 [[ ! -e "${WORK}/root/sites/${SITE_ID}" ]] || fail "site releases not deleted"
 bash "${ROOT_DIR}/scripts/site-remove.sh" --env "$ENV" --site "$SITE_ID" >/dev/null || fail "removing a missing site must succeed"
-pass "hosted websites: verified snapshots, hosts, path apps on custom hosts, per-language 404, fallback, atomic swap, prune, removal"
+pass "hosted websites: verified snapshots, site CSP header, hosts, path apps on custom hosts, per-language 404, fallback, atomic swap, prune, removal"
 
 bash "${ROOT_DIR}/scripts/validate-webapps.sh" --env "$ENV" >/dev/null || fail "validate-webapps.sh"
 pass "validate-webapps.sh passes for all enabled apps"

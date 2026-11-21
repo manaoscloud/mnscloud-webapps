@@ -249,6 +249,11 @@ Tenant websites of the Website module are static snapshots, one per site, instal
   `server` also includes the path-based apps (`nginx/apps/*.conf`), so `/customer-portal/`, `/pos/`
   and the other edge paths keep working on a custom domain that serves a site; the root app lives in
   `nginx/apps-root/` (moved there automatically from older layouts) and only the default server uses it.
+- Site Content-Security-Policy: the API renders `.mnscloud-site-csp` at the snapshot root (never
+  served: dot paths answer 404). When it is one line of CSP characters (no quote, `$`, backslash or
+  brace), every site location sends it as `X-Mnscloud-Site-Csp`; the platform edge turns that header
+  into the page `Content-Security-Policy` and keeps its strict site policy when it is absent. A
+  snapshot without the file (older renders) or with an invalid one sends no header.
 - `scripts/site-remove.sh --site <32-hex>` stops serving the hosts and deletes the releases.
 - `WEBAPPS_SITE_FALLBACK_SERVER_NAMES` (default `*.mnscloud.website`) answers a neutral 404 for site
   hosts without a snapshot, so they never fall back to the root app. Exact site hosts win over it.
